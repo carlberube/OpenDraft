@@ -69,9 +69,9 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
     if (context.selectedText) parts.push('selected text');
     if (context.currentSceneText) parts.push('current scene');
     else if (context.nearbyText) parts.push('nearby context');
-    if (context.documentTitle) parts.push(\`document: \${context.documentTitle}\`);
+    if (context.documentTitle) parts.push(`document: ${context.documentTitle}`);
 
-    return parts.length > 0 ? \`Using \${parts.join(', ')}\` : 'Using document context';
+    return parts.length > 0 ? `Using ${parts.join(', ')}` : 'Using document context';
   };
 
   return (

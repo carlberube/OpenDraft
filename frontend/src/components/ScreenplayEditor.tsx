@@ -3417,6 +3417,10 @@ const ScreenplayEditor: React.FC = () => {
     // Extract scene text
     if (sceneStartPos < sceneEndPos) {
       currentSceneText = doc.textBetween(sceneStartPos, sceneEndPos, '\n\n').trim();
+      // Limit scene text to prevent sending excessive context (max 2000 chars)
+      if (currentSceneText.length > 2000) {
+        currentSceneText = currentSceneText.substring(0, 2000) + '...';
+      }
     }
 
     // If no scene found, get nearby text (e.g., 500 chars before and after cursor)

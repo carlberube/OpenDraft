@@ -2,6 +2,38 @@
 
 This document describes the AI-assisted screenplay generation feature in OpenDraft.
 
+## Quick Start
+
+### With Mock Provider (No API Key Required)
+
+```bash
+# Terminal 1: Start backend
+cd backend
+uvicorn app.main:app --reload
+
+# Terminal 2: Start frontend
+cd frontend
+npm run dev
+```
+
+Then open the app, click `Tools → AI Generate...`, and test with any prompt. The MockProvider will return placeholder content.
+
+### With Real AI Provider
+
+```bash
+# Terminal 1: Start backend with AI configuration
+cd backend
+export AI_PROVIDER_MODEL=openai/gpt-4o-mini
+export OPENAI_API_KEY=sk-proj-your-key-here
+uvicorn app.main:app --reload
+
+# Terminal 2: Start frontend
+cd frontend
+npm run dev
+```
+
+Then use `Tools → AI Generate...` to generate real screenplay content.
+
 ## Overview
 
 OpenDraft now includes a minimal viable product (MVP) for AI-assisted screenplay writing. This feature allows users to generate screenplay content by providing a prompt, with the AI taking into account the current screenplay context.
@@ -116,6 +148,35 @@ If `AI_PROVIDER_MODEL` is not set, the backend will use `MockProvider`, which re
 - Testing the UI without API costs
 - Development without API keys
 - Demonstrations
+
+#### Local Mock Provider Workflow
+
+To test the AI feature without configuring API keys:
+
+1. **Start the backend without AI_PROVIDER_MODEL**:
+   ```bash
+   cd backend
+   # Do NOT set AI_PROVIDER_MODEL
+   uvicorn app.main:app --reload
+   ```
+
+2. **Start the frontend**:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. **Use the feature**:
+   - Open a screenplay in the editor
+   - Click `Tools → AI Generate...`
+   - Enter any prompt
+   - Click Generate
+   - The MockProvider will return placeholder dialogue
+   - Click Insert to add it to your screenplay
+
+The backend will log a warning: `"AI_PROVIDER_MODEL not set. Using MockProvider."`
+
+This is expected and allows you to test the full workflow without external API calls.
 
 ## Usage
 
@@ -263,7 +324,13 @@ The backend:
 
 ### Vulnerabilities
 
-This implementation uses `litellm==1.83.0`, which patches known security vulnerabilities in earlier versions.
+This implementation uses `litellm==1.83.10`, which patches all known security vulnerabilities including:
+- Sandbox escape in custom-code guardrail
+- Authenticated command execution via MCP stdio test endpoints
+- Server-Side Template Injection in /prompts/test endpoint
+- SQL Injection in Proxy API key verification
+
+**Important**: We use LiteLLM **only as a library** (via `acompletion`), not as a proxy server. No LiteLLM proxy, test, or admin routes are exposed by our FastAPI application.
 
 ## Future Enhancements
 

@@ -89,6 +89,7 @@ import ShareDialog from './ShareDialog';
 import CollabLoginDialog from './CollabLoginDialog';
 import JoinCollabDialog from './JoinCollabDialog';
 import CompareVersionPicker from './CompareVersionPicker';
+import AiGenerateDialog from './AiGenerateDialog';
 import ZoomPanel from './ZoomPanel';
 import { useIsTouchDevice, useSwipeEdge, usePinchZoom } from '../hooks/useTouch';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -982,6 +983,11 @@ const ScreenplayEditor: React.FC = () => {
   const charAutoDismissedRef = useRef(false);
 
   const [formatPanelOpen, setFormatPanelOpen] = useState(false);
+
+  // AI Generate dialog state
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+  const aiCursorPosRef = useRef<number | null>(null);
+  const aiContextRef = useRef<import('../ai/types').ScreenplayContext | undefined>(undefined);
 
   // Script context menu state
   const [ctxMenuState, setCtxMenuState] = useState<{
@@ -3366,6 +3372,87 @@ const ScreenplayEditor: React.FC = () => {
     charAutoDismissedRef.current = true;
   }, []);
 
+  // --- AI Generate handlers ---
+  const handleAiGenerate = useCallback(() => {
+    if (!editor) return;
+
+    // Capture current cursor position
+    const { from } = editor.state.selection;
+    aiCursorPosRef.current = from;
+
+    // Capture context
+    const { state } = editor;
+    const { doc } = state;
+
+    // Try to get selected text
+    const selectedText = state.selection.empty ? undefined : state.doc.textBetween(state.selection.from, state.selection.to, '\n');
+
+    // Try to get current scene text (find nearest sceneHeading and get text until next sceneHeading)
+    let currentSceneText: string | undefined;
+    let nearbyText: string | undefined;
+
+    // Scan backwards to find the nearest sceneHeading
+    let sceneStartPos = 0;
+    doc.descendants((node, pos) => {
+      if (pos >= from) return false; // Stop after cursor
+      if (node.type.name === 'sceneHeading') {
+        sceneStartPos = pos;
+      }
+      return true;
+    });
+
+    // Scan forward from sceneStartPos to find the next sceneHeading or end
+    let sceneEndPos = doc.content.size;
+    let foundNextScene = false;
+    doc.descendants((node, pos) => {
+      if (pos <= sceneStartPos) return true; // Skip until after scene start
+      if (node.type.name === 'sceneHeading' && !foundNextScene) {
+        sceneEndPos = pos;
+        foundNextScene = true;
+        return false; // Stop
+      }
+      return true;
+    });
+
+    // Extract scene text
+    if (sceneStartPos < sceneEndPos) {
+      currentSceneText = doc.textBetween(sceneStartPos, sceneEndPos, '\n\n').trim();
+    }
+
+    // If no scene found, get nearby text (e.g., 500 chars before and after cursor)
+    if (!currentSceneText) {
+      const nearbyStart = Math.max(0, from - 500);
+      const nearbyEnd = Math.min(doc.content.size, from + 500);
+      nearbyText = doc.textBetween(nearbyStart, nearbyEnd, '\n\n').trim();
+    }
+
+    // Get document title
+    const documentTitle = useEditorStore.getState().documentTitle || undefined;
+
+    aiContextRef.current = {
+      selectedText,
+      currentSceneText,
+      nearbyText,
+      documentTitle,
+    };
+
+    setAiGenerateOpen(true);
+  }, [editor]);
+
+  const handleAiInsert = useCallback((content: string) => {
+    if (!editor || aiCursorPosRef.current === null) return;
+
+    // Insert at the saved cursor position
+    const pos = aiCursorPosRef.current;
+
+    // Parse the generated fountain content and insert it
+    // For simplicity, we'll insert it as plain text and let the user format it
+    // A more sophisticated approach would parse it into proper screenplay elements
+    editor.chain().focus().setTextSelection(pos).insertContent(content).run();
+
+    showToast('AI-generated content inserted', 'success');
+  }, [editor]);
+
   // --- Click on script note highlight → auto-filter notes panel ---
   // Only opens the panel when note highlights are visible (notesVisible).
   // When highlights are off, clicks pass through as normal editing.
@@ -3698,7 +3785,7 @@ const ScreenplayEditor: React.FC = () => {
           return;
         }
         setShareDialogOpen(true);
-      }} onJoinCollab={() => setJoinCollabOpen(true)} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />}
+      }} onJoinCollab={() => setJoinCollabOpen(true)} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} onAiGenerate={handleAiGenerate} />}
       {!isHistoryMode && <Toolbar editor={editor} />}
       <div className="editor-layout">
         {!isHistoryMode && <SceneNavigator editor={editor} scrollContainer={editorMainRef.current} style={{ width: navWidth, minWidth: navWidth }} />}
@@ -3967,6 +4054,13 @@ const ScreenplayEditor: React.FC = () => {
         <JoinCollabDialog
           onJoin={handleJoinCollab}
           onClose={() => setJoinCollabOpen(false)}
+        />
+      )}
+      {aiGenerateOpen && (
+        <AiGenerateDialog
+          onClose={() => setAiGenerateOpen(false)}
+          onInsert={handleAiInsert}
+          context={aiContextRef.current}
         />
       )}
       {dragOverEditor && (

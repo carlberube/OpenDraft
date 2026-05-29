@@ -105,6 +105,7 @@ import {
   FaToggleOn,
   FaLock,
   FaFileSignature,
+  FaMagic,
 } from 'react-icons/fa';
 
 interface MenuBarProps {
@@ -113,6 +114,7 @@ interface MenuBarProps {
   onJoinCollab?: () => void;
   isCollabActive?: boolean;
   isCollabGuest?: boolean;
+  onAiGenerate?: () => void;
 }
 
 interface MenuItem {
@@ -146,7 +148,7 @@ const DiagRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({ l
   </tr>
 );
 
-const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, isCollabActive, isCollabGuest }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, isCollabActive, isCollabGuest, onAiGenerate }) => {
   const navigate = useNavigate();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
@@ -1130,6 +1132,8 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
     {
       label: 'Tools',
       items: [
+        { icon: <FaMagic />, label: 'AI Generate...', action: onAiGenerate, disabled: !editor || isCollabGuest },
+        { separator: true, label: '' },
         {
           icon: <FaUserFriends />, label: 'Collaboration',
           children: [

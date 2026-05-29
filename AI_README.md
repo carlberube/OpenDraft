@@ -1,164 +1,355 @@
-# AI-Assisted Screenplay Generation - MVP
+# AI-Assisted Screenplay Generation MVP
 
-This is a minimal viable product (MVP) implementation of AI-assisted screenplay generation for OpenDraft.
+This document describes the AI-assisted screenplay generation feature in OpenDraft.
+
+## Overview
+
+OpenDraft now includes a minimal viable product (MVP) for AI-assisted screenplay writing. This feature allows users to generate screenplay content by providing a prompt, with the AI taking into account the current screenplay context.
 
 ## Features
 
-The MVP adds a simple "AI Generate" feature accessible from the Tools menu that allows users to:
+### What's Included
 
-1. Open the screenplay editor
-2. Place the cursor somewhere in the script
-3. Trigger "Tools → AI Generate..." from the menu
-4. Enter a prompt such as: "Write an engaging dialogue between a husband and wife fighting."
-5. Preview the generated screenplay content
-6. Insert it at the current cursor position after confirmation
+- **AI Generate Dialog**: Accessible via `Tools → AI Generate...` menu item
+- **Context-Aware Generation**: Captures and sends:
+  - Selected text (if any)
+  - Current scene text
+  - Nearby text around cursor
+  - Document title
+- **Preview Before Insert**: Generated content is shown for review before insertion
+- **Multiple Provider Support**: Works with any LiteLLM-compatible AI provider:
+  - OpenAI (GPT-4, GPT-4o-mini, etc.)
+  - Anthropic (Claude 3.5 Sonnet, etc.)
+  - Mistral AI
+  - xAI (Grok)
+  - And many others supported by LiteLLM
+- **Mock Provider**: Works without API keys for testing (returns placeholder content)
+- **Error Handling**: Clear messages for configuration issues, API failures, and validation errors
+- **Privacy Notice**: Users are informed that data will be sent to the AI provider
+
+### What's NOT Included (Intentionally)
+
+This is an MVP. The following features are NOT included:
+
+- Streaming responses
+- Chat history / conversational interface
+- Embeddings / RAG / vector search
+- Model picker UI
+- Advanced diff viewer
+- Persistent AI memory
+- Automatic content rewriting
+- Integration with beats/cards
+- Persistent Chat Assistant panel
+
+These features may be added in future iterations.
 
 ## Architecture
 
-### Backend
+### Backend (`backend/app/ai/`)
 
-Located in `backend/app/ai/`:
-
-- **`schemas.py`**: Pydantic models for request/response
-- **`prompts.py`**: System prompts and prompt construction
-- **`providers.py`**: AI provider abstraction with LiteLLM support
+- **`schemas.py`**: Pydantic models for request/response validation
+- **`prompts.py`**: System prompts and context-aware prompt construction
+- **`providers.py`**: AI provider abstraction layer
+  - `AIProvider` abstract base class
+  - `LiteLLMProvider` for real AI generation
+  - `MockProvider` for testing without API keys
+  - `get_provider()` factory function
+  - `sanitize_screenplay_output()` for cleaning AI responses
 - **`routes.py`**: FastAPI endpoint `/api/ai/generate-screenplay-content`
-
-The backend uses LiteLLM for multi-provider support, allowing you to use OpenAI, Anthropic, Mistral, or any other LiteLLM-compatible provider.
 
 ### Frontend
 
-Located in `frontend/src/ai/` and `frontend/src/components/`:
-
-- **`ai/types.ts`**: TypeScript types
-- **`ai/api.ts`**: API client for the AI endpoint
-- **`components/AiGenerateDialog.tsx`**: The dialog component for prompting and previewing
+- **`frontend/src/ai/types.ts`**: TypeScript type definitions
+- **`frontend/src/ai/api.ts`**: API client for the AI endpoint
+- **`frontend/src/components/AiGenerateDialog.tsx`**: React dialog component
+- **`frontend/src/components/AiGenerateDialog.css`**: Styling for the dialog
+- **Updates to `ScreenplayEditor.tsx`**: Integration with editor
+- **Updates to `MenuBar.tsx`**: "AI Generate..." menu item in Tools menu
 
 ## Configuration
 
-### Environment Variables
+### Backend Environment Variables
 
-The backend AI provider is configured via environment variables:
+Set these environment variables in your backend `.env` file or deployment environment:
 
-- **`AI_PROVIDER_MODEL`**: The model to use (e.g., `openai/gpt-4o-mini`, `anthropic/claude-3-5-sonnet-latest`)
-- **Provider API keys**: Depending on the provider you choose:
-  - `OPENAI_API_KEY` for OpenAI models
-  - `ANTHROPIC_API_KEY` for Anthropic models
-  - `MISTRAL_API_KEY` for Mistral models
-  - `XAI_API_KEY` for xAI models
-  - etc.
+#### Required
 
-### Example Configuration
+- `AI_PROVIDER_MODEL`: The AI model to use (LiteLLM model format)
+  - Examples:
+    - `openai/gpt-4o-mini`
+    - `openai/gpt-4`
+    - `anthropic/claude-3-5-sonnet-latest`
+    - `anthropic/claude-3-opus-latest`
+    - `mistral/mistral-large-latest`
+    - `xai/grok-beta`
+
+#### Provider API Keys (one required based on chosen provider)
+
+- `OPENAI_API_KEY`: For OpenAI models
+- `ANTHROPIC_API_KEY`: For Anthropic Claude models
+- `MISTRAL_API_KEY`: For Mistral AI models
+- `XAI_API_KEY`: For xAI Grok models
+
+### Example `.env` Configuration
 
 ```bash
-# .env file in backend/
+# OpenAI
 AI_PROVIDER_MODEL=openai/gpt-4o-mini
-OPENAI_API_KEY=sk-...your-key-here...
-```
+OPENAI_API_KEY=sk-proj-...
 
-or
-
-```bash
+# or Anthropic
 AI_PROVIDER_MODEL=anthropic/claude-3-5-sonnet-latest
-ANTHROPIC_API_KEY=sk-ant-...your-key-here...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# or Mistral
+AI_PROVIDER_MODEL=mistral/mistral-large-latest
+MISTRAL_API_KEY=...
+
+# or xAI
+AI_PROVIDER_MODEL=xai/grok-beta
+XAI_API_KEY=...
 ```
 
-### Installing LiteLLM
+### No Configuration (Mock Mode)
 
-The backend now includes `litellm==1.57.17` in `requirements.txt`. Install it with:
+If `AI_PROVIDER_MODEL` is not set, the backend will use `MockProvider`, which returns placeholder screenplay content. This is useful for:
+- Testing the UI without API costs
+- Development without API keys
+- Demonstrations
+
+## Usage
+
+### For Users
+
+1. Open a screenplay in the editor
+2. Place your cursor where you want to insert AI-generated content
+3. Click `Tools → AI Generate...` in the menu bar
+4. Enter a prompt (e.g., "Write an engaging dialogue between a husband and wife fighting")
+5. Click **Generate**
+6. Review the generated content in the preview
+7. Click **Insert** to add it to your screenplay, **Regenerate** to try again, or **Cancel** to discard
+
+### For Developers
+
+#### Installing Dependencies
 
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-### Mock Provider (Development)
+This installs `litellm==1.83.0` (patched version addressing security vulnerabilities).
 
-If `AI_PROVIDER_MODEL` is not set, the backend will use a `MockProvider` that returns placeholder content. This is useful for testing the UI without configuring API keys.
+#### Running the Backend
 
-## Usage
+```bash
+cd backend
+# Set environment variables first
+export AI_PROVIDER_MODEL=openai/gpt-4o-mini
+export OPENAI_API_KEY=sk-proj-...
+# Then start the server
+uvicorn app.main:app --reload
+```
 
-1. **Configure the backend** with the environment variables above
-2. **Start the backend** (e.g., `cd backend && uvicorn app.main:app --reload`)
-3. **Open OpenDraft** and open a screenplay
-4. **Click "Tools → AI Generate..."** in the menu
-5. **Enter a prompt** and click "Generate"
-6. **Preview the result** and click "Insert" to add it to your screenplay
+#### Testing Without API Keys
+
+```bash
+cd backend
+# Don't set AI_PROVIDER_MODEL - MockProvider will be used
+uvicorn app.main:app --reload
+```
 
 ## Context Handling
 
-The AI receives context from the screenplay:
+The AI receives screenplay context to generate relevant content:
 
-- **Selected text**: If any text is selected
-- **Current scene**: Text from the current scene heading to the next scene heading
-- **Nearby text**: If no scene is found, ~500 characters before and after the cursor
-- **Document title**: The title of the screenplay
+### Context Priority
 
-This context helps the AI maintain continuity, character names, and tone.
+1. **Selected Text**: If the user has text selected, it's included as primary context
+2. **Current Scene**: The system finds the nearest scene heading and extracts all text until the next scene heading
+3. **Nearby Text**: If no scene is found, 500 characters before and after the cursor are sent
+4. **Document Title**: The screenplay title is included for additional context
 
-## Limitations (Intentional for MVP)
+### Context in Prompts
 
-This MVP intentionally does NOT include:
+The backend constructs a prompt like:
 
-- Streaming responses
-- Full chat history
-- Embeddings or RAG/vector search
-- Model picker UI
-- Advanced diff viewer
-- Persistent AI memory
-- Automatic rewrite of existing screenplay content
-- Beats/cards integration
-- A persistent Chat Assistant panel
+```
+=== CONTEXT ===
+Document: My Screenplay
+Current scene:
+INT. COFFEE SHOP - DAY
+...
 
-These features may be added in future iterations.
+=== USER REQUEST ===
+Write an engaging dialogue between two friends catching up.
+```
+
+This helps the AI:
+- Use consistent character names
+- Match the existing tone
+- Maintain continuity
+- Generate appropriate scene content
+
+## Prompt Engineering
+
+### System Prompt
+
+The system instructs the AI to:
+- Generate only screenplay content (no explanations)
+- Use Fountain-like formatting
+- Avoid Markdown, code fences, bullet lists
+- Format with:
+  - Scene headings: `INT. LOCATION - DAY`
+  - Character names: UPPERCASE
+  - Dialogue under character names
+  - Parentheticals in (parentheses)
+  - Action lines as plain paragraphs
+
+### Output Sanitization
+
+The backend:
+- Strips Markdown code fences (```fountain, ```text, etc.)
+- Trims whitespace
+- Validates non-empty output
+- Returns warnings for very short content
 
 ## Error Handling
 
-- **Missing configuration**: Shows "AI is not configured. Set AI_PROVIDER_MODEL and the appropriate provider API key on the backend."
-- **Generation failure**: Shows "AI generation failed. Please try again."
-- **Empty prompt**: Disables the Generate button with "Enter a prompt first."
+### Configuration Errors
 
-## Privacy
+**Error**: "AI is not configured. Set AI_PROVIDER_MODEL environment variable and the appropriate provider API key."
 
-Before generating, the dialog shows a notice: "Your prompt and screenplay context will be sent to the configured AI provider."
+**Solution**: Set `AI_PROVIDER_MODEL` and the corresponding API key in backend environment.
 
-API keys are only used on the backend and are never exposed to the frontend.
+### Generation Errors
+
+**Error**: "AI generation failed. Please try again."
+
+**Causes**:
+- API key invalid or expired
+- Network issues
+- Rate limits exceeded
+- Model unavailable
+
+**Solution**: Check backend logs for detailed error messages.
+
+### Empty Prompt
+
+**Error**: "Please enter a prompt"
+
+**Solution**: Enter a prompt before clicking Generate.
+
+### Empty AI Response
+
+**Error**: "AI returned empty content. Please try a different prompt."
+
+**Solution**: Rephrase your prompt to be more specific.
+
+## Security & Privacy
+
+### API Keys
+
+- API keys are **NEVER** sent to the frontend
+- All AI requests go through the backend
+- Keys are configured via environment variables
+- No API keys in version control
+
+### Data Privacy
+
+- Users are notified that prompts and context will be sent to the AI provider
+- No data is stored persistently by OpenDraft (unless user saves the generated content)
+- AI provider terms of service and privacy policies apply
+
+### Vulnerabilities
+
+This implementation uses `litellm==1.83.0`, which patches known security vulnerabilities in earlier versions.
 
 ## Future Enhancements
 
-Possible future improvements:
+Potential future improvements (not in this MVP):
 
-- Generate new beats between existing beats
-- Summarize scenes into cards
-- Use context from the selection, current scene, current beat/card, or entire screenplay
-- Expose AI features through both a Chat Assistant panel and contextual menu actions
-- Streaming responses for better UX
-- More sophisticated Fountain parsing for insertion
-- Integration with the beat board and index cards
-- Model selection UI
-- Token usage tracking and limits
+- **Streaming**: Real-time generation with progressive display
+- **Chat Interface**: Persistent chat panel for iterative refinement
+- **Beats Integration**: Generate screenplay beats and expand them
+- **Cards Integration**: Summarize scenes into beat cards
+- **RAG/Embeddings**: Search and use the entire screenplay as context
+- **Model Picker UI**: Let users choose models from the UI
+- **Advanced Diff**: Side-by-side comparison before insert
+- **Templates**: Pre-built prompts for common tasks
+- **Tone Control**: Adjust formality, genre, pacing
+- **Character Consistency**: Track and enforce character voice
+- **Auto-Format**: Parse and apply screenplay formatting automatically
 
 ## Testing
 
-Manual testing:
+### Manual Testing Checklist
 
-1. Verify the dialog opens from the Tools menu
-2. Enter a prompt and verify generation works
-3. Verify preview is shown
-4. Verify insert works at cursor position
-5. Verify cancel does not modify the document
-6. Verify backend missing config produces a readable error
+- [ ] Open screenplay editor
+- [ ] Click Tools → AI Generate
+- [ ] Dialog opens
+- [ ] Context summary displays correctly
+- [ ] Enter a prompt
+- [ ] Click Generate
+- [ ] Generated content appears in preview
+- [ ] Click Insert
+- [ ] Content inserts at cursor position
+- [ ] Dialog closes
+- [ ] Test Regenerate button
+- [ ] Test Cancel button (before and after generation)
+- [ ] Test with no configuration (should show error)
+- [ ] Test with invalid API key (should show error)
+- [ ] Test with empty prompt (should show error)
 
-Backend tests can be added for:
+### Automated Testing
 
-- The sanitizer/helper functions in `providers.py`
-- Prompt construction in `prompts.py`
-- Error handling in `routes.py`
+Currently, no automated tests are included in this MVP. Consider adding:
 
-## Implementation Notes
+- Backend unit tests for `sanitize_screenplay_output()`
+- Backend integration tests for the endpoint (with MockProvider)
+- Frontend unit tests for the dialog component
+- E2E tests for the full workflow
 
-- The implementation follows OpenDraft's existing architecture patterns
-- It respects the plugin system (could be moved to a plugin in the future)
-- Changes are minimal and focused
-- The AI dialog is a standalone component that can be easily removed or refactored
-- The backend AI module is isolated and can be extended independently
+## Troubleshooting
+
+### "AI is not configured"
+
+Check backend logs. Ensure `AI_PROVIDER_MODEL` is set:
+
+```bash
+echo $AI_PROVIDER_MODEL
+```
+
+### "litellm module not found"
+
+Install backend dependencies:
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### Generated content has code fences
+
+This is a sanitization failure. Report as a bug. The backend should strip these automatically.
+
+### Content doesn't insert at cursor
+
+Check browser console for JavaScript errors. This may indicate a compatibility issue with the editor.
+
+### Rate limit errors
+
+You're exceeding the AI provider's rate limits. Consider:
+- Using a different model with higher limits
+- Implementing request queuing
+- Upgrading your API plan
+
+## License
+
+This feature is part of OpenDraft (MIT License). AI providers have separate terms of service.
+
+## Support
+
+For issues, questions, or feature requests:
+- GitHub Issues: https://github.com/your-org/OpenDraft/issues
+- Documentation: See main OpenDraft README.md

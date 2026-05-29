@@ -8,10 +8,40 @@
 
 .ai-context-info {
   margin-bottom: 1rem;
-  padding: 0.5rem;
+  padding: 0.75rem;
   background: var(--fd-bg-secondary, #f5f5f5);
   border-radius: 4px;
+  border-left: 3px solid var(--fd-accent, #2563eb);
+}
+
+.ai-context-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--fd-text, #333);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ai-context-item {
+  font-size: 0.9rem;
   color: var(--fd-text-secondary, #666);
+  padding: 0.25rem 0;
+  line-height: 1.4;
+}
+
+.ai-context-preview {
+  background: var(--fd-info-bg, #e0f2fe);
+  border-left-color: var(--fd-info, #0ea5e9);
+}
+
+.ai-context-preview .ai-context-title {
+  color: var(--fd-info-text, #0c4a6e);
+}
+
+.ai-context-preview .ai-context-item {
+  color: var(--fd-info-text, #0c4a6e);
+  font-weight: 500;
 }
 
 .ai-prompt-input {

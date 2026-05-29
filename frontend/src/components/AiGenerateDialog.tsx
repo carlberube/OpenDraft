@@ -49,9 +49,15 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
   };
 
   const handleInsert = () => {
-    if (generatedContent) {
+    if (!generatedContent) return;
+
+    try {
       onInsert(generatedContent);
       onClose();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to insert content';
+      setError(errorMessage);
+      showToast(errorMessage, 'error');
     }
   };
 
@@ -63,15 +69,26 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
   };
 
   const getContextSummary = (): string => {
-    if (!context) return 'No context';
+    if (!context) return 'Using document context';
 
     const parts: string[] = [];
     if (context.selectedText) parts.push('selected text');
     if (context.currentSceneText) parts.push('current scene');
-    else if (context.nearbyText) parts.push('nearby context');
-    if (context.documentTitle) parts.push(`document: ${context.documentTitle}`);
+    else if (context.nearbyText) parts.push('nearby text');
 
     return parts.length > 0 ? `Using ${parts.join(', ')}` : 'Using document context';
+  };
+
+  const getContextDetails = (): string[] => {
+    if (!context) return ['Document context'];
+
+    const details: string[] = [];
+    if (context.selectedText) details.push('✓ Selected text');
+    if (context.currentSceneText) details.push('✓ Current scene');
+    else if (context.nearbyText) details.push('✓ Nearby text');
+    if (context.documentTitle) details.push(`✓ Document: ${context.documentTitle}`);
+
+    return details.length > 0 ? details : ['Document context'];
   };
 
   return (
@@ -88,7 +105,10 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
           {!generatedContent ? (
             <>
               <div className="ai-context-info">
-                <small>{getContextSummary()}</small>
+                <div className="ai-context-title">Context being sent:</div>
+                {getContextDetails().map((detail, idx) => (
+                  <div key={idx} className="ai-context-item">{detail}</div>
+                ))}
               </div>
 
               <div className="form-group">
@@ -119,6 +139,11 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
             </>
           ) : (
             <>
+              <div className="ai-context-info ai-context-preview">
+                <div className="ai-context-title">Context used:</div>
+                <div className="ai-context-item">{getContextSummary()}</div>
+              </div>
+
               <div className="ai-preview-label">
                 <strong>Generated Content (Preview):</strong>
               </div>
@@ -135,6 +160,18 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
                   ))}
                 </div>
               )}
+
+              {error && (
+                <div className="ai-error">
+                  <strong>Error:</strong> {error}
+                </div>
+              )}
+
+              <div className="ai-privacy-notice">
+                <small>
+                  ⓘ This content has not been inserted yet. Click "Insert" to add it at your cursor position.
+                </small>
+              </div>
             </>
           )}
         </div>
@@ -156,12 +193,12 @@ const AiGenerateDialog: React.FC<AiGenerateDialogProps> = ({ onClose, onInsert, 
           ) : (
             <>
               <button onClick={onClose}>
-                Cancel
+                Discard
               </button>
               <button onClick={handleRegenerate} disabled={isGenerating}>
-                Regenerate
+                {isGenerating ? 'Generating...' : 'Regenerate'}
               </button>
-              <button onClick={handleInsert} className="primary">
+              <button onClick={handleInsert} className="primary" disabled={isGenerating}>
                 Insert
               </button>
             </>

@@ -10,7 +10,19 @@ from fastapi.responses import FileResponse
 
 import logging
 
-from app.api import scripts, auth, export, projects, versions, assets, collab, link_preview, formatting_templates, locations
+from app.api import (
+    scripts,
+    auth,
+    export,
+    projects,
+    versions,
+    assets,
+    collab,
+    link_preview,
+    formatting_templates,
+    locations,
+    chat,
+)
 from app.ai import routes as ai_routes
 from app.config import COLLAB_JWT_SECRET, PROJECTS_DIR_BASE, BASE_DIR, DEMO_MODE
 from app.dependencies import require_verified_user
@@ -38,8 +50,7 @@ async def lifespan(app: FastAPI):
             "=" * 72 + "\n"
             "COLLAB_JWT_SECRET is NOT SET. Every authenticated request will\n"
             "return 401 Unauthorized. Run ./setup_auth_env.sh at the project\n"
-            "root to generate a shared secret for backend + collab-server.\n"
-            + "=" * 72
+            "root to generate a shared secret for backend + collab-server.\n" + "=" * 72
         )
     yield
 
@@ -80,21 +91,49 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 # UserContextMiddleware has already pushed user_id into the ContextVar so
 # services resolve paths under users/<id>/.
 _user_scoped = [Depends(require_verified_user)]
-app.include_router(scripts.router, prefix="/api/scripts", tags=["scripts"], dependencies=_user_scoped)
-app.include_router(projects.router, prefix="/api/projects", tags=["projects"], dependencies=_user_scoped)
-app.include_router(versions.router, prefix="/api/projects", tags=["versions"], dependencies=_user_scoped)
-app.include_router(assets.router, prefix="/api/projects", tags=["assets"], dependencies=_user_scoped)
-app.include_router(locations.router, prefix="/api/projects", tags=["locations"], dependencies=_user_scoped)
+app.include_router(
+    scripts.router, prefix="/api/scripts", tags=["scripts"], dependencies=_user_scoped
+)
+app.include_router(
+    projects.router,
+    prefix="/api/projects",
+    tags=["projects"],
+    dependencies=_user_scoped,
+)
+app.include_router(
+    versions.router,
+    prefix="/api/projects",
+    tags=["versions"],
+    dependencies=_user_scoped,
+)
+app.include_router(
+    assets.router, prefix="/api/projects", tags=["assets"], dependencies=_user_scoped
+)
+app.include_router(
+    locations.router,
+    prefix="/api/projects",
+    tags=["locations"],
+    dependencies=_user_scoped,
+)
+app.include_router(
+    chat.router, prefix="/api/projects", tags=["chat"], dependencies=_user_scoped
+)
 # Collab session management writes to a shared JSON file, so anonymous access
 # would let anyone invite to / revoke sessions for any project. The frontend
 # normally talks directly to the collab-server for invites; these routes are
 # kept for legacy callers and require a verified user.
-app.include_router(collab.router, prefix="/api/collab", tags=["collab"], dependencies=_user_scoped)
+app.include_router(
+    collab.router, prefix="/api/collab", tags=["collab"], dependencies=_user_scoped
+)
 
 # Not user-scoped: export stubs, link previews, shared formatting templates.
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(link_preview.router, prefix="/api/link", tags=["link-preview"])
-app.include_router(formatting_templates.router, prefix="/api/formatting-templates", tags=["formatting-templates"])
+app.include_router(
+    formatting_templates.router,
+    prefix="/api/formatting-templates",
+    tags=["formatting-templates"],
+)
 
 # AI generation — no auth required for MVP (keys are backend-only)
 app.include_router(ai_routes.router, prefix="/api/ai", tags=["ai"])
@@ -120,7 +159,9 @@ async def demo_info():
             "The demo server resets every hour — all data will be lost. "
             "For production use, download the app for your platform and use it on your own machine securely. "
             "For team use, try the Cloud edition of OpenDraft."
-        ) if DEMO_MODE else None,
+        )
+        if DEMO_MODE
+        else None,
     }
 
 
@@ -132,7 +173,11 @@ if STATIC_DIR.is_dir():
     # Serve dictionary files for spell check
     dictionaries_dir = STATIC_DIR / "dictionaries"
     if dictionaries_dir.is_dir():
-        app.mount("/dictionaries", StaticFiles(directory=dictionaries_dir), name="dictionaries")
+        app.mount(
+            "/dictionaries",
+            StaticFiles(directory=dictionaries_dir),
+            name="dictionaries",
+        )
 
     # Catch-all: serve static files or index.html for SPA routing
     @app.get("/{full_path:path}")
@@ -142,13 +187,22 @@ if STATIC_DIR.is_dir():
             return {"detail": "Not found"}
         # Serve static files (favicon.svg, fonts, etc.) if they exist
         static_file = STATIC_DIR / full_path
-        if full_path and static_file.is_file() and STATIC_DIR in static_file.resolve().parents:
+        if (
+            full_path
+            and static_file.is_file()
+            and STATIC_DIR in static_file.resolve().parents
+        ):
             return FileResponse(static_file)
         index = STATIC_DIR / "index.html"
         if index.exists():
             return FileResponse(index)
         return {"app": "OpenDraft", "version": "0.5.0"}
 else:
+
     @app.get("/")
     async def root():
-        return {"app": "OpenDraft", "version": "0.5.0", "note": "Run build.sh to deploy frontend"}
+        return {
+            "app": "OpenDraft",
+            "version": "0.5.0",
+            "note": "Run build.sh to deploy frontend",
+        }

@@ -114,7 +114,7 @@ interface MenuBarProps {
   onJoinCollab?: () => void;
   isCollabActive?: boolean;
   isCollabGuest?: boolean;
-  onAiGenerate?: () => void;
+  onAiChat?: () => void;
 }
 
 interface MenuItem {
@@ -148,7 +148,7 @@ const DiagRow: React.FC<{ label: string; value: string; mono?: boolean }> = ({ l
   </tr>
 );
 
-const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, isCollabActive, isCollabGuest, onAiGenerate }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, isCollabActive, isCollabGuest, onAiChat }) => {
   const navigate = useNavigate();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
@@ -418,6 +418,16 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
       const result = await api.checkin(currentProject.id, checkinMessage.trim());
       if (result.hash) {
         showToast(`Version saved: ${result.short_hash}`, 'success');
+
+        // Best-effort: link a chat checkpoint to this version when a script is active.
+        if (currentScriptId) {
+          void api.createChatCheckpoint(currentProject.id, currentScriptId, {
+            commit_hash: result.hash,
+            label: checkinMessage.trim(),
+          }).catch((err) => {
+            console.warn('Chat checkpoint creation failed after check-in:', err);
+          });
+        }
       } else {
         showToast(result.message || 'No changes to commit', 'success');
       }
@@ -633,8 +643,8 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
       // that the save goes to OpenDraft's library, not back to the source file.
       const fmtLabel = ext === 'fdx' ? 'Final Draft (.fdx)'
         : ext === 'fountain' ? 'Fountain (.fountain)'
-        : ext === 'odraft' ? 'OpenDraft (.odraft)'
-        : ext ? `.${ext}` : 'imported file';
+          : ext === 'odraft' ? 'OpenDraft (.odraft)'
+            : ext ? `.${ext}` : 'imported file';
       store.setImportedSource({ name, format: fmtLabel });
     } catch (err) {
       console.error('Import failed:', err);
@@ -998,8 +1008,8 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
     {
       label: 'Edit',
       items: [
-        { icon: <FaUndo />, label: 'Undo', shortcut: `${mod}Z`, action: () => { try { editor?.chain().focus().undo().run(); } catch {} } },
-        { icon: <FaRedo />, label: 'Redo', shortcut: `⇧${mod}Z`, action: () => { try { editor?.chain().focus().redo().run(); } catch {} } },
+        { icon: <FaUndo />, label: 'Undo', shortcut: `${mod}Z`, action: () => { try { editor?.chain().focus().undo().run(); } catch { } } },
+        { icon: <FaRedo />, label: 'Redo', shortcut: `⇧${mod}Z`, action: () => { try { editor?.chain().focus().redo().run(); } catch { } } },
         { separator: true, label: '' },
         { icon: <FaCut />, label: 'Cut', shortcut: `${mod}X`, action: () => document.execCommand('cut') },
         { icon: <FaCopy />, label: 'Copy', shortcut: `${mod}C`, action: () => document.execCommand('copy') },
@@ -1075,11 +1085,13 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
             { icon: <FaCompass />, label: navigatorOpen ? '\u2713 Navigator' : 'Navigator', action: toggleNavigator },
             { icon: <FaTh />, label: indexCardsOpen ? '\u2713 Index Cards' : 'Index Cards', action: toggleIndexCards },
             { icon: <FaStream />, label: beatBoardOpen ? '\u2713 Beat Board' : 'Beat Board', action: toggleBeatBoard },
-            { icon: <FaStickyNote />, label: scriptNotesOpen ? '\u2713 Notes Panel' : 'Notes Panel', action: () => {
-              const hasSelection = editor && !editor.state.selection.empty;
-              useEditorStore.getState().setNotesActiveTab(hasSelection ? 'script' : 'general');
-              toggleScriptNotes();
-            } },
+            {
+              icon: <FaStickyNote />, label: scriptNotesOpen ? '\u2713 Notes Panel' : 'Notes Panel', action: () => {
+                const hasSelection = editor && !editor.state.selection.empty;
+                useEditorStore.getState().setNotesActiveTab(hasSelection ? 'script' : 'general');
+                toggleScriptNotes();
+              }
+            },
             { icon: <FaUsers />, label: characterProfilesOpen ? '\u2713 Characters' : 'Characters', action: toggleCharacterProfiles },
             { icon: <FaTags />, label: tagsPanelOpen ? '\u2713 Tags' : 'Tags', action: toggleTagsPanel },
             { icon: <FaCompass />, label: locationDatabaseOpen ? '\u2713 Locations' : 'Locations', action: toggleLocationDatabase },
@@ -1104,12 +1116,14 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
           children: [
             { icon: <FaCompressArrowsAlt />, label: toolbarMode === 'compact' ? '\u2713 Compact' : 'Compact', action: () => setToolbarMode('compact') },
             { icon: <FaExpandArrowsAlt />, label: toolbarMode === 'comfortable' ? '\u2713 Comfortable' : 'Comfortable', action: () => setToolbarMode('comfortable') },
-            { icon: <FaEyeSlash />, label: toolbarMode === 'hidden' ? '\u2713 Hidden' : 'Hidden', action: () => {
-              setToolbarMode('hidden');
-              if (localStorage.getItem('opendraft:hiddenModeIntroShown') !== '1') {
-                setShowHiddenModeIntro(true);
+            {
+              icon: <FaEyeSlash />, label: toolbarMode === 'hidden' ? '\u2713 Hidden' : 'Hidden', action: () => {
+                setToolbarMode('hidden');
+                if (localStorage.getItem('opendraft:hiddenModeIntroShown') !== '1') {
+                  setShowHiddenModeIntro(true);
+                }
               }
-            }},
+            },
           ],
         },
         {
@@ -1132,7 +1146,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
     {
       label: 'Tools',
       items: [
-        { icon: <FaMagic />, label: 'AI Generate...', action: onAiGenerate, disabled: !editor || isCollabGuest },
+        { icon: <FaMagic />, label: 'AI Chat...', action: onAiChat, disabled: !editor || isCollabGuest },
         { separator: true, label: '' },
         {
           icon: <FaUserFriends />, label: 'Collaboration',
@@ -1148,16 +1162,20 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
         {
           icon: <FaStream />, label: 'Analytics',
           children: [
-            { icon: <FaStream />, label: 'Script Statistics', action: () => {
-              const s = useEditorStore.getState();
-              s.setStatisticsScrollTo(null);
-              s.setStatisticsOpen(true);
-            } },
-            { icon: <FaHistory />, label: 'Timing Report', action: () => {
-              const s = useEditorStore.getState();
-              s.setStatisticsScrollTo('stats-timing-report');
-              s.setStatisticsOpen(true);
-            } },
+            {
+              icon: <FaStream />, label: 'Script Statistics', action: () => {
+                const s = useEditorStore.getState();
+                s.setStatisticsScrollTo(null);
+                s.setStatisticsOpen(true);
+              }
+            },
+            {
+              icon: <FaHistory />, label: 'Timing Report', action: () => {
+                const s = useEditorStore.getState();
+                s.setStatisticsScrollTo('stats-timing-report');
+                s.setStatisticsOpen(true);
+              }
+            },
           ],
         },
         { separator: true, label: '' },
@@ -1282,7 +1300,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
           y: Math.max(0, Math.min(p.y, window.innerHeight - 36)),
         };
       }
-    } catch {}
+    } catch { }
     return null;
   });
   const fabDragRef = useRef<{ startX: number; startY: number; originX: number; originY: number; isDrag: boolean } | null>(null);
@@ -1302,7 +1320,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
   // Desktop: pointer events with capture for mouse drag
   const handleFabPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.pointerType === 'touch') return; // Touch handled separately below
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { }
     fabDragRef.current = {
       startX: e.clientX, startY: e.clientY,
       originX: fabPos?.x ?? (navPanelWidth + 14),
@@ -1491,474 +1509,474 @@ const MenuBar: React.FC<MenuBarProps> = ({ editor, onCollaborate, onJoinCollab, 
 
   return (
     <>
-    {toolbarMode === 'hidden' ? (
-      createPortal(
-        <>
-          <div
-            ref={fabElRef}
-            className={`menu-fab ${floatingMenuOpen ? 'menu-fab--open' : ''}`}
-            style={{ left: fabX, top: fabTopStyle }}
-            onPointerDown={handleFabPointerDown}
-            onPointerMove={handleFabPointerMove}
-            onPointerUp={handleFabPointerUp}
-            onClick={handleFabClick}
-            onMouseDown={(e) => e.nativeEvent.stopImmediatePropagation()}
-            title="Menu (drag to reposition)"
-          >
-            <FaBars />
-          </div>
-          {floatingMenuOpen && (() => {
-            const fabInBottom = fabY > window.innerHeight * 0.55;
-            const fabInRight = fabX > window.innerWidth * 0.5;
-            const mStyle: React.CSSProperties = {};
-            if (fabInBottom) {
-              mStyle.bottom = window.innerHeight - fabY + 8;
-            } else {
-              mStyle.top = fabY + FAB_SIZE + 8;
-            }
-            if (fabInRight) {
-              mStyle.right = window.innerWidth - fabX - FAB_SIZE;
-            } else {
-              mStyle.left = fabX;
-            }
-            return (
-              <div className="menu-bar chrome-comfortable menu-bar--floating" style={mStyle} ref={menuRef}>
-                {renderMenuItems()}
-              </div>
-            );
-          })()}
-        </>,
-        document.body,
-      )
-    ) : (
-      <div className={menuBarClass} ref={menuRef}>
-        {renderMenuItems()}
-      </div>
-    )}
-    {activeMenuData && createPortal(
-      <div
-        className={`menu-dropdown${toolbarMode === 'comfortable' ? ' menu-dropdown--comfortable' : ''}${dropdownPos.bottom != null ? ' menu-dropdown--above' : ''}`}
-        style={{ top: dropdownPos.top, bottom: dropdownPos.bottom, left: dropdownPos.left }}
-      >
-        {activeMenuData.items.map((item, i) =>
-          item.separator ? (
-            <div key={i} className="menu-separator" onPointerEnter={handleItemPointerEnter} />
-          ) : item.children ? (
+      {toolbarMode === 'hidden' ? (
+        createPortal(
+          <>
             <div
-              key={item.label}
-              className={`menu-dropdown-item has-children ${openSubmenu === item.label ? 'submenu-open' : ''}`}
-              onPointerEnter={(e) => handleSubmenuPointerEnter(item.label!, e)}
-              onTouchEnd={(e) => handleSubmenuTouchEnd(item.label!, e)}
-              onClick={(e) => { e.stopPropagation(); setOpenSubmenu((prev) => (prev === item.label ? null : item.label!)); }}
+              ref={fabElRef}
+              className={`menu-fab ${floatingMenuOpen ? 'menu-fab--open' : ''}`}
+              style={{ left: fabX, top: fabTopStyle }}
+              onPointerDown={handleFabPointerDown}
+              onPointerMove={handleFabPointerMove}
+              onPointerUp={handleFabPointerUp}
+              onClick={handleFabClick}
+              onMouseDown={(e) => e.nativeEvent.stopImmediatePropagation()}
+              title="Menu (drag to reposition)"
             >
-              {item.icon && <span className="menu-dropdown-icon">{item.icon}</span>}
-              <span>{item.label}</span>
-              <span className="menu-submenu-arrow">{openSubmenu === item.label ? '\u25BE' : '\u25B8'}</span>
+              <FaBars />
+            </div>
+            {floatingMenuOpen && (() => {
+              const fabInBottom = fabY > window.innerHeight * 0.55;
+              const fabInRight = fabX > window.innerWidth * 0.5;
+              const mStyle: React.CSSProperties = {};
+              if (fabInBottom) {
+                mStyle.bottom = window.innerHeight - fabY + 8;
+              } else {
+                mStyle.top = fabY + FAB_SIZE + 8;
+              }
+              if (fabInRight) {
+                mStyle.right = window.innerWidth - fabX - FAB_SIZE;
+              } else {
+                mStyle.left = fabX;
+              }
+              return (
+                <div className="menu-bar chrome-comfortable menu-bar--floating" style={mStyle} ref={menuRef}>
+                  {renderMenuItems()}
+                </div>
+              );
+            })()}
+          </>,
+          document.body,
+        )
+      ) : (
+        <div className={menuBarClass} ref={menuRef}>
+          {renderMenuItems()}
+        </div>
+      )}
+      {activeMenuData && createPortal(
+        <div
+          className={`menu-dropdown${toolbarMode === 'comfortable' ? ' menu-dropdown--comfortable' : ''}${dropdownPos.bottom != null ? ' menu-dropdown--above' : ''}`}
+          style={{ top: dropdownPos.top, bottom: dropdownPos.bottom, left: dropdownPos.left }}
+        >
+          {activeMenuData.items.map((item, i) =>
+            item.separator ? (
+              <div key={i} className="menu-separator" onPointerEnter={handleItemPointerEnter} />
+            ) : item.children ? (
               <div
-                className={`menu-submenu ${openSubmenu === item.label ? 'submenu-visible' : ''}`}
-                ref={(el) => {
-                  if (el && openSubmenu === item.label) {
-                    const rect = el.getBoundingClientRect();
-                    if (rect.right > window.innerWidth) {
-                      el.classList.add('submenu-flip');
-                    } else {
-                      el.classList.remove('submenu-flip');
-                    }
-                    if (rect.bottom > window.innerHeight) {
-                      el.classList.add('submenu-flip-y');
-                    } else {
-                      el.classList.remove('submenu-flip-y');
-                    }
-                  }
-                }}
+                key={item.label}
+                className={`menu-dropdown-item has-children ${openSubmenu === item.label ? 'submenu-open' : ''}`}
+                onPointerEnter={(e) => handleSubmenuPointerEnter(item.label!, e)}
+                onTouchEnd={(e) => handleSubmenuTouchEnd(item.label!, e)}
+                onClick={(e) => { e.stopPropagation(); setOpenSubmenu((prev) => (prev === item.label ? null : item.label!)); }}
               >
-                {item.children.map((child, j) =>
-                  child.separator ? (
-                    <div key={j} className="menu-separator" />
-                  ) : (
-                    <div
-                      key={child.label}
-                      className={`menu-dropdown-item ${child.disabled ? 'disabled' : ''}`}
-                      onTouchEnd={(e) => e.stopPropagation()}
-                      onClick={(e) => handleItemClick(child, e)}
-                    >
-                      {child.icon && <span className="menu-dropdown-icon">{child.icon}</span>}
-                      <span>{child.label}</span>
-                      {child.shortcut && (
-                        <span className="menu-shortcut">{child.shortcut}</span>
-                      )}
-                    </div>
-                  )
+                {item.icon && <span className="menu-dropdown-icon">{item.icon}</span>}
+                <span>{item.label}</span>
+                <span className="menu-submenu-arrow">{openSubmenu === item.label ? '\u25BE' : '\u25B8'}</span>
+                <div
+                  className={`menu-submenu ${openSubmenu === item.label ? 'submenu-visible' : ''}`}
+                  ref={(el) => {
+                    if (el && openSubmenu === item.label) {
+                      const rect = el.getBoundingClientRect();
+                      if (rect.right > window.innerWidth) {
+                        el.classList.add('submenu-flip');
+                      } else {
+                        el.classList.remove('submenu-flip');
+                      }
+                      if (rect.bottom > window.innerHeight) {
+                        el.classList.add('submenu-flip-y');
+                      } else {
+                        el.classList.remove('submenu-flip-y');
+                      }
+                    }
+                  }}
+                >
+                  {item.children.map((child, j) =>
+                    child.separator ? (
+                      <div key={j} className="menu-separator" />
+                    ) : (
+                      <div
+                        key={child.label}
+                        className={`menu-dropdown-item ${child.disabled ? 'disabled' : ''}`}
+                        onTouchEnd={(e) => e.stopPropagation()}
+                        onClick={(e) => handleItemClick(child, e)}
+                      >
+                        {child.icon && <span className="menu-dropdown-icon">{child.icon}</span>}
+                        <span>{child.label}</span>
+                        {child.shortcut && (
+                          <span className="menu-shortcut">{child.shortcut}</span>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div
+                key={item.label}
+                className={`menu-dropdown-item ${item.disabled ? 'disabled' : ''}`}
+                onPointerEnter={handleItemPointerEnter}
+                onClick={(e) => handleItemClick(item, e)}
+              >
+                {item.icon && <span className="menu-dropdown-icon">{item.icon}</span>}
+                <span>{item.label}</span>
+                {item.shortcut && (
+                  <span className="menu-shortcut">{item.shortcut}</span>
                 )}
               </div>
+            )
+          )}
+        </div>,
+        document.body,
+      )}
+      {showHiddenModeIntro && createPortal(
+        <div className="dialog-overlay" onClick={() => setShowHiddenModeIntro(false)}>
+          <div className="hidden-mode-intro" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">Hidden Mode</div>
+            <div className="hidden-mode-intro-body">
+              <div className="hidden-mode-intro-icon">
+                <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="var(--fd-accent)" strokeWidth="1.5">
+                  <circle cx="20" cy="20" r="18" fill="var(--fd-overlay-subtle)" />
+                  <line x1="14" y1="14" x2="14" y2="26" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="20" y1="14" x2="20" y2="26" strokeWidth="2.5" strokeLinecap="round" />
+                  <line x1="26" y1="14" x2="26" y2="26" strokeWidth="2.5" strokeLinecap="round" />
+                </svg>
+              </div>
+              <p>The menu bar is now hidden. A <strong>floating menu button</strong> has been placed on screen to access all menus.</p>
+              <p>You can <strong>drag the button</strong> to reposition it anywhere on screen. Your preferred position will be remembered.</p>
+              <p>To restore the menu bar, tap the button and go to <strong>View &gt; Menu &amp; Toolbar</strong>.</p>
             </div>
-          ) : (
-            <div
-              key={item.label}
-              className={`menu-dropdown-item ${item.disabled ? 'disabled' : ''}`}
-              onPointerEnter={handleItemPointerEnter}
-              onClick={(e) => handleItemClick(item, e)}
-            >
-              {item.icon && <span className="menu-dropdown-icon">{item.icon}</span>}
-              <span>{item.label}</span>
-              {item.shortcut && (
-                <span className="menu-shortcut">{item.shortcut}</span>
-              )}
-            </div>
-          )
-        )}
-      </div>,
-      document.body,
-    )}
-    {showHiddenModeIntro && createPortal(
-      <div className="dialog-overlay" onClick={() => setShowHiddenModeIntro(false)}>
-        <div className="hidden-mode-intro" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">Hidden Mode</div>
-          <div className="hidden-mode-intro-body">
-            <div className="hidden-mode-intro-icon">
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none" stroke="var(--fd-accent)" strokeWidth="1.5">
-                <circle cx="20" cy="20" r="18" fill="var(--fd-overlay-subtle)" />
-                <line x1="14" y1="14" x2="14" y2="26" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="20" y1="14" x2="20" y2="26" strokeWidth="2.5" strokeLinecap="round" />
-                <line x1="26" y1="14" x2="26" y2="26" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-            </div>
-            <p>The menu bar is now hidden. A <strong>floating menu button</strong> has been placed on screen to access all menus.</p>
-            <p>You can <strong>drag the button</strong> to reposition it anywhere on screen. Your preferred position will be remembered.</p>
-            <p>To restore the menu bar, tap the button and go to <strong>View &gt; Menu &amp; Toolbar</strong>.</p>
-          </div>
-          <div className="dialog-footer" style={{ flexDirection: 'column', gap: '12px', alignItems: 'stretch' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--fd-text-secondary)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={hiddenModeDontShow} onChange={(e) => setHiddenModeDontShow(e.target.checked)} />
-              Don't show this again
-            </label>
-            <button className="dialog-btn dialog-btn-primary" onClick={() => {
-              if (hiddenModeDontShow) localStorage.setItem('opendraft:hiddenModeIntroShown', '1');
-              setShowHiddenModeIntro(false);
-            }}>Got it</button>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    )}
-    {checkinOpen && (
-      <div className="dialog-overlay" onClick={() => setCheckinOpen(false)}>
-        <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">Check In Version</div>
-          <div className="dialog-body">
-            <div className="dialog-row">
-              <label>Version Description</label>
-              <input
-                ref={checkinInputRef}
-                value={checkinMessage}
-                onChange={(e) => setCheckinMessage(e.target.value)}
-                placeholder="Describe what changed..."
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && checkinMessage.trim()) handleCheckinSubmit();
-                  if (e.key === 'Escape') setCheckinOpen(false);
-                }}
-              />
+            <div className="dialog-footer" style={{ flexDirection: 'column', gap: '12px', alignItems: 'stretch' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--fd-text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={hiddenModeDontShow} onChange={(e) => setHiddenModeDontShow(e.target.checked)} />
+                Don't show this again
+              </label>
+              <button className="dialog-btn dialog-btn-primary" onClick={() => {
+                if (hiddenModeDontShow) localStorage.setItem('opendraft:hiddenModeIntroShown', '1');
+                setShowHiddenModeIntro(false);
+              }}>Got it</button>
             </div>
           </div>
-          <div className="dialog-actions">
-            <button onClick={() => setCheckinOpen(false)}>Cancel</button>
-            <button
-              className="dialog-primary"
-              onClick={handleCheckinSubmit}
-              disabled={checkinSaving || !checkinMessage.trim()}
-            >
-              {checkinSaving ? 'Saving...' : 'Check In'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
-    {pageSetupOpen && (
-      <PageSetupDialog onClose={() => setPageSetupOpen(false)} />
-    )}
-    {templateSelectOpen && (
-      <TemplateSelectDialog editor={editor} onClose={() => setTemplateSelectOpen(false)} />
-    )}
-    {formatPrefsOpen && (
-      <ScriptFormatPreferencesDialog
-        firstRun={formatPrefsOpen.firstRun}
-        onConfirm={(ids) => {
-          const next = formatPrefsOpen;
-          setFormatPrefsOpen(null);
-          if (next?.afterSave === 'apply-new-screenplay') {
-            // After saving prefs, immediately route the new-screenplay action through
-            // the same logic again (1 enabled = apply directly, 2+ = show picker).
-            if (ids.length === 1) finishNewScreenplayWithFormat(ids[0], formatPickerMode);
-            else if (ids.length > 1) setFormatPickerOpen(true);
-            else finishNewScreenplayWithFormat(INDUSTRY_STANDARD_ID, formatPickerMode);
-          }
-        }}
-        onCancel={() => setFormatPrefsOpen(null)}
-      />
-    )}
-    {formatPickerOpen && (
-      <ScriptFormatPickerDialog
-        enabledIds={useSettingsStore.getState().enabledScriptFormats}
-        onPick={(id) => {
-          setFormatPickerOpen(false);
-          finishNewScreenplayWithFormat(id, formatPickerMode);
-        }}
-        onCancel={() => setFormatPickerOpen(false)}
-      />
-    )}
-    {aboutOpen && (
-      <div className="dialog-overlay" onClick={() => setAboutOpen(false)}>
-        <div className="dialog-box about-dialog" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">About Open Draft</div>
-          <div className="dialog-body about-body">
-            <div className="about-title">Open Draft</div>
-            <div className="about-version">Version 0.17.7</div>
-            <div className="about-tagline">Free, open-source screenwriting software</div>
-
-            <div className="about-whats-new">
-              <div className="about-section-title">What's New in 0.17</div>
-              <div className="about-changelog">
-              <div className="about-subsection-title">v0.17.7</div>
-              <ul className="about-list">
-                <li><strong>Edge-to-Edge Display on Android</strong> — Updated how the editor handles modern Android screens so content reaches the screen edges without sitting under the status bar or gesture pill, addressing Play Console pre-launch warnings.</li>
-                <li><strong>Floating Menu Accessibility</strong> — The hidden-menu icon now stays clear of the status bar so it's tappable on every device.</li>
-                <li><strong>Curved-Edge Layouts</strong> — Spelling, grammar, search, and dialog panels now respect the safe area on devices with curved displays so the panel never disappears under the curve.</li>
-                <li><strong>Reliable Spell-Check Markers</strong> — Replaced the wavy underline on misspelled and grammar-flagged words with a version that renders consistently across Android WebView builds, including older OEM variants where the native style was silently skipped.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.6</div>
-              <ul className="about-list">
-                <li><strong>Improved Stability</strong> — Resolves a startup crash that affected the app on certain devices.</li>
-                <li><strong>Per-Document Language &amp; Dictionary</strong> — Choose a spellcheck language per script (English, Hindi, Odia, and others) with a global custom-word library that follows you across projects.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.5</div>
-              <ul className="about-list">
-                <li><strong>Stable Caret on Format Changes</strong> — Toggling bold, italic, underline, font, or size across a multi-block selection no longer scrolls the viewport to one end of the selection. The page stays put so you can keep editing where you were.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.4</div>
-              <ul className="about-list">
-                <li><strong>Resend Verification Code</strong> — When signing in on a new device with two-factor verification, you can now request a fresh 6-digit code if the original email didn't arrive.</li>
-                <li><strong>Smarter Two-Factor Toggle</strong> — The Settings two-factor switch is automatically disabled when the collaboration server can't send email, so accounts can't be accidentally locked out of new devices.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.3</div>
-              <ul className="about-list">
-                <li><strong>Save Prompt Before New / Open / Import</strong> — The unsaved-changes dialog now also fires when auto-save hasn't caught up yet. Edits made just before resetting the editor are no longer silently discarded.</li>
-                <li><strong>Faster Panel &amp; Search Navigation</strong> — Clicking a character, scene, note, tag, or search match now jumps the editor instantly instead of animating, removing a noticeable lag on long paginated documents.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.2</div>
-              <ul className="about-list">
-                <li><strong>Save Reliability on Windows</strong> — Switched the local SQLite database to WAL journal mode and added a post-write byte-count verification step. Fixes silent save failures on large files (issue #39). Any remaining write corruption now produces a visible error instead of failing silently.</li>
-                <li><strong>OneDrive Detection</strong> — Warns you at startup if OpenDraft's data folder is inside a OneDrive-synced location (a known cause of silent SQLite corruption on Windows) and shows how to fix it.</li>
-                <li><strong>Diagnostics Dialog</strong> — New <em>Help → Diagnostics</em> with a Copy Report button. Captures storage backend, DB path, OS, and last storage error so it can be pasted into bug reports.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.1</div>
-              <ul className="about-list">
-                <li><strong>Storage Fallback Recovery</strong> — If the app falls back to in-memory storage after a SQLite failure, it now recovers cleanly the next time SQLite becomes available, and surfaces fallback errors instead of swallowing them.</li>
-                <li><strong>No More Lost Edits on Close</strong> — Pending edits are flushed before the window closes, even on unclean exits.</li>
-                <li><strong>Mobile Stability</strong> — Dialogs survive the soft keyboard on Android &amp; iOS; fixed an Android cold-start crash.</li>
-              </ul>
-
-              <div className="about-subsection-title">v0.17.0</div>
-              <ul className="about-list">
-                <li><strong>Treatment Documents</strong> — Write a 20–25 page prose treatment alongside your screenplay. Use "+ New Document" in a project to open the manuscript-format editor.</li>
-                <li><strong>Location Database</strong> — Sidebar panel for managing screenplay locations: list / detail / edit, auto-discovery from scene headings, aliases, and rename-in-scene-headings.</li>
-                <li><strong>Act &amp; Sequence Structure</strong> — Tag scenes into acts and sequences, browse them in a new Structure tab in the Scene Navigator, with "A1"/"A2" badges on each scene.</li>
-                <li><strong>Version Diff View</strong> — Compare any two checked-in versions side-by-side, unified, or changes-only, with a summary of scenes changed and per-character dialogue delta.</li>
-                <li><strong>Multi-Format Templates</strong> — AV (two-column), multicam sitcom, one-hour drama, radio play, and stage play templates with a format picker for new screenplays.</li>
-                <li><strong>DOCX Import / Export</strong> — Round-trip your screenplay through Microsoft Word.</li>
-                <li><strong>Title Page Editor</strong> — Structured editor with live preview (Format &gt; Title Page); data flows into PDF, FDX, and Fountain exports.</li>
-                <li><strong>Script Statistics &amp; Timing</strong> — Tools &gt; Analytics opens dialogue distribution, gender analysis, pacing chart, and character presence map. Per-scene timing in the Navigator and a runtime estimate in the status bar.</li>
-                <li><strong>WGA &amp; Registration Fields</strong> — Project Properties gains WGA registration, copyright, agent/manager fields, and a submission log.</li>
-                <li><strong>Scene Navigator: Search &amp; Synopsis</strong> — Search scene headings and synopses with highlighting; inline synopsis preview on each collapsed scene.</li>
-                <li><strong>Character Relationships</strong> — Inline relationship editor, relationship map tab, and profile-completeness indicator on the Characters panel.</li>
-                <li><strong>Cloud Projects &amp; Per-User Files</strong> — Configurable cloud server URL, per-user file isolation, free 5-file quota, Local/Cloud project tabs, and mobile-friendly tap targets.</li>
-                <li><strong>Save As Replaces Save to Cloud</strong> — Shift+Cmd+S now offers an explicit Local/Cloud destination tab.</li>
-                <li><strong>Self-Hosted Docker Image</strong> — Single <code>ghcr.io/&hellip;/opendraft-combined</code> image bundling backend + collab server for one-image deployment targets.</li>
-              </ul>
+        </div>,
+        document.body,
+      )}
+      {checkinOpen && (
+        <div className="dialog-overlay" onClick={() => setCheckinOpen(false)}>
+          <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">Check In Version</div>
+            <div className="dialog-body">
+              <div className="dialog-row">
+                <label>Version Description</label>
+                <input
+                  ref={checkinInputRef}
+                  value={checkinMessage}
+                  onChange={(e) => setCheckinMessage(e.target.value)}
+                  placeholder="Describe what changed..."
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && checkinMessage.trim()) handleCheckinSubmit();
+                    if (e.key === 'Escape') setCheckinOpen(false);
+                  }}
+                />
               </div>
             </div>
+            <div className="dialog-actions">
+              <button onClick={() => setCheckinOpen(false)}>Cancel</button>
+              <button
+                className="dialog-primary"
+                onClick={handleCheckinSubmit}
+                disabled={checkinSaving || !checkinMessage.trim()}
+              >
+                {checkinSaving ? 'Saving...' : 'Check In'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pageSetupOpen && (
+        <PageSetupDialog onClose={() => setPageSetupOpen(false)} />
+      )}
+      {templateSelectOpen && (
+        <TemplateSelectDialog editor={editor} onClose={() => setTemplateSelectOpen(false)} />
+      )}
+      {formatPrefsOpen && (
+        <ScriptFormatPreferencesDialog
+          firstRun={formatPrefsOpen.firstRun}
+          onConfirm={(ids) => {
+            const next = formatPrefsOpen;
+            setFormatPrefsOpen(null);
+            if (next?.afterSave === 'apply-new-screenplay') {
+              // After saving prefs, immediately route the new-screenplay action through
+              // the same logic again (1 enabled = apply directly, 2+ = show picker).
+              if (ids.length === 1) finishNewScreenplayWithFormat(ids[0], formatPickerMode);
+              else if (ids.length > 1) setFormatPickerOpen(true);
+              else finishNewScreenplayWithFormat(INDUSTRY_STANDARD_ID, formatPickerMode);
+            }
+          }}
+          onCancel={() => setFormatPrefsOpen(null)}
+        />
+      )}
+      {formatPickerOpen && (
+        <ScriptFormatPickerDialog
+          enabledIds={useSettingsStore.getState().enabledScriptFormats}
+          onPick={(id) => {
+            setFormatPickerOpen(false);
+            finishNewScreenplayWithFormat(id, formatPickerMode);
+          }}
+          onCancel={() => setFormatPickerOpen(false)}
+        />
+      )}
+      {aboutOpen && (
+        <div className="dialog-overlay" onClick={() => setAboutOpen(false)}>
+          <div className="dialog-box about-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">About Open Draft</div>
+            <div className="dialog-body about-body">
+              <div className="about-title">Open Draft</div>
+              <div className="about-version">Version 0.17.7</div>
+              <div className="about-tagline">Free, open-source screenwriting software</div>
 
-            <div className="about-whats-new">
-              <div className="about-section-title">Compatibility</div>
-              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 8 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: 'var(--fd-text-secondary)' }}>
-                    <th style={{ padding: '4px 8px', fontWeight: 500 }}>Subsystem</th>
-                    <th style={{ padding: '4px 8px', fontWeight: 500 }}>Status</th>
-                    <th style={{ padding: '4px 8px', fontWeight: 500 }}>Implementation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {getCompatEntries().map((entry) => (
-                    <React.Fragment key={entry.label}>
-                      <tr>
-                        <td style={{ padding: '4px 8px', color: 'var(--fd-text)' }}>{entry.label}</td>
-                        <td style={{ padding: '4px 8px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            backgroundColor: entry.mode === 'primary' ? '#4caf50' : '#ff9800',
-                            marginRight: 6,
-                            verticalAlign: 'middle',
-                          }} />
-                          <span style={{ color: entry.mode === 'primary' ? '#4caf50' : '#ff9800', verticalAlign: 'middle' }}>
-                            {entry.mode === 'primary' ? 'Latest' : 'Fallback'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '4px 8px', color: 'var(--fd-text-secondary)', fontSize: 11 }}>
-                          {entry.using}
-                        </td>
-                      </tr>
-                      {entry.errorReason && (
+              <div className="about-whats-new">
+                <div className="about-section-title">What's New in 0.17</div>
+                <div className="about-changelog">
+                  <div className="about-subsection-title">v0.17.7</div>
+                  <ul className="about-list">
+                    <li><strong>Edge-to-Edge Display on Android</strong> — Updated how the editor handles modern Android screens so content reaches the screen edges without sitting under the status bar or gesture pill, addressing Play Console pre-launch warnings.</li>
+                    <li><strong>Floating Menu Accessibility</strong> — The hidden-menu icon now stays clear of the status bar so it's tappable on every device.</li>
+                    <li><strong>Curved-Edge Layouts</strong> — Spelling, grammar, search, and dialog panels now respect the safe area on devices with curved displays so the panel never disappears under the curve.</li>
+                    <li><strong>Reliable Spell-Check Markers</strong> — Replaced the wavy underline on misspelled and grammar-flagged words with a version that renders consistently across Android WebView builds, including older OEM variants where the native style was silently skipped.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.6</div>
+                  <ul className="about-list">
+                    <li><strong>Improved Stability</strong> — Resolves a startup crash that affected the app on certain devices.</li>
+                    <li><strong>Per-Document Language &amp; Dictionary</strong> — Choose a spellcheck language per script (English, Hindi, Odia, and others) with a global custom-word library that follows you across projects.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.5</div>
+                  <ul className="about-list">
+                    <li><strong>Stable Caret on Format Changes</strong> — Toggling bold, italic, underline, font, or size across a multi-block selection no longer scrolls the viewport to one end of the selection. The page stays put so you can keep editing where you were.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.4</div>
+                  <ul className="about-list">
+                    <li><strong>Resend Verification Code</strong> — When signing in on a new device with two-factor verification, you can now request a fresh 6-digit code if the original email didn't arrive.</li>
+                    <li><strong>Smarter Two-Factor Toggle</strong> — The Settings two-factor switch is automatically disabled when the collaboration server can't send email, so accounts can't be accidentally locked out of new devices.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.3</div>
+                  <ul className="about-list">
+                    <li><strong>Save Prompt Before New / Open / Import</strong> — The unsaved-changes dialog now also fires when auto-save hasn't caught up yet. Edits made just before resetting the editor are no longer silently discarded.</li>
+                    <li><strong>Faster Panel &amp; Search Navigation</strong> — Clicking a character, scene, note, tag, or search match now jumps the editor instantly instead of animating, removing a noticeable lag on long paginated documents.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.2</div>
+                  <ul className="about-list">
+                    <li><strong>Save Reliability on Windows</strong> — Switched the local SQLite database to WAL journal mode and added a post-write byte-count verification step. Fixes silent save failures on large files (issue #39). Any remaining write corruption now produces a visible error instead of failing silently.</li>
+                    <li><strong>OneDrive Detection</strong> — Warns you at startup if OpenDraft's data folder is inside a OneDrive-synced location (a known cause of silent SQLite corruption on Windows) and shows how to fix it.</li>
+                    <li><strong>Diagnostics Dialog</strong> — New <em>Help → Diagnostics</em> with a Copy Report button. Captures storage backend, DB path, OS, and last storage error so it can be pasted into bug reports.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.1</div>
+                  <ul className="about-list">
+                    <li><strong>Storage Fallback Recovery</strong> — If the app falls back to in-memory storage after a SQLite failure, it now recovers cleanly the next time SQLite becomes available, and surfaces fallback errors instead of swallowing them.</li>
+                    <li><strong>No More Lost Edits on Close</strong> — Pending edits are flushed before the window closes, even on unclean exits.</li>
+                    <li><strong>Mobile Stability</strong> — Dialogs survive the soft keyboard on Android &amp; iOS; fixed an Android cold-start crash.</li>
+                  </ul>
+
+                  <div className="about-subsection-title">v0.17.0</div>
+                  <ul className="about-list">
+                    <li><strong>Treatment Documents</strong> — Write a 20–25 page prose treatment alongside your screenplay. Use "+ New Document" in a project to open the manuscript-format editor.</li>
+                    <li><strong>Location Database</strong> — Sidebar panel for managing screenplay locations: list / detail / edit, auto-discovery from scene headings, aliases, and rename-in-scene-headings.</li>
+                    <li><strong>Act &amp; Sequence Structure</strong> — Tag scenes into acts and sequences, browse them in a new Structure tab in the Scene Navigator, with "A1"/"A2" badges on each scene.</li>
+                    <li><strong>Version Diff View</strong> — Compare any two checked-in versions side-by-side, unified, or changes-only, with a summary of scenes changed and per-character dialogue delta.</li>
+                    <li><strong>Multi-Format Templates</strong> — AV (two-column), multicam sitcom, one-hour drama, radio play, and stage play templates with a format picker for new screenplays.</li>
+                    <li><strong>DOCX Import / Export</strong> — Round-trip your screenplay through Microsoft Word.</li>
+                    <li><strong>Title Page Editor</strong> — Structured editor with live preview (Format &gt; Title Page); data flows into PDF, FDX, and Fountain exports.</li>
+                    <li><strong>Script Statistics &amp; Timing</strong> — Tools &gt; Analytics opens dialogue distribution, gender analysis, pacing chart, and character presence map. Per-scene timing in the Navigator and a runtime estimate in the status bar.</li>
+                    <li><strong>WGA &amp; Registration Fields</strong> — Project Properties gains WGA registration, copyright, agent/manager fields, and a submission log.</li>
+                    <li><strong>Scene Navigator: Search &amp; Synopsis</strong> — Search scene headings and synopses with highlighting; inline synopsis preview on each collapsed scene.</li>
+                    <li><strong>Character Relationships</strong> — Inline relationship editor, relationship map tab, and profile-completeness indicator on the Characters panel.</li>
+                    <li><strong>Cloud Projects &amp; Per-User Files</strong> — Configurable cloud server URL, per-user file isolation, free 5-file quota, Local/Cloud project tabs, and mobile-friendly tap targets.</li>
+                    <li><strong>Save As Replaces Save to Cloud</strong> — Shift+Cmd+S now offers an explicit Local/Cloud destination tab.</li>
+                    <li><strong>Self-Hosted Docker Image</strong> — Single <code>ghcr.io/&hellip;/opendraft-combined</code> image bundling backend + collab server for one-image deployment targets.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="about-whats-new">
+                <div className="about-section-title">Compatibility</div>
+                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 8 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--fd-text-secondary)' }}>
+                      <th style={{ padding: '4px 8px', fontWeight: 500 }}>Subsystem</th>
+                      <th style={{ padding: '4px 8px', fontWeight: 500 }}>Status</th>
+                      <th style={{ padding: '4px 8px', fontWeight: 500 }}>Implementation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getCompatEntries().map((entry) => (
+                      <React.Fragment key={entry.label}>
                         <tr>
-                          <td colSpan={3} style={{ padding: '0 8px 8px 8px' }}>
-                            <pre style={{
-                              margin: 0,
-                              padding: '6px 8px',
-                              fontSize: 11,
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                              background: '#f4f4f4',
-                              border: '1px solid #ddd',
-                              borderRadius: 4,
-                              color: '#1a1a1a',
-                            }}>{entry.errorReason}</pre>
+                          <td style={{ padding: '4px 8px', color: 'var(--fd-text)' }}>{entry.label}</td>
+                          <td style={{ padding: '4px 8px' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: entry.mode === 'primary' ? '#4caf50' : '#ff9800',
+                              marginRight: 6,
+                              verticalAlign: 'middle',
+                            }} />
+                            <span style={{ color: entry.mode === 'primary' ? '#4caf50' : '#ff9800', verticalAlign: 'middle' }}>
+                              {entry.mode === 'primary' ? 'Latest' : 'Fallback'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '4px 8px', color: 'var(--fd-text-secondary)', fontSize: 11 }}>
+                            {entry.using}
                           </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="dialog-actions">
-            <button className="dialog-primary" onClick={() => setAboutOpen(false)}>Close</button>
-          </div>
-        </div>
-      </div>
-    )}
-    {diagnosticsOpen && (
-      <div className="dialog-overlay" onClick={() => setDiagnosticsOpen(false)}>
-        <div className="dialog-box about-dialog" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">Diagnostics</div>
-          <div className="dialog-body about-body">
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--fd-text-secondary)' }}>
-              Runtime info to attach to bug reports. Click "Copy" to copy the
-              full report to your clipboard, then paste it into the GitHub issue.
-            </p>
-            {diagnosticsReport ? (
-              <>
-                {diagnosticsReport.oneDriveSuspect && (
-                  <div style={{
-                    marginTop: 12,
-                    padding: '10px 12px',
-                    background: '#fff8e1',
-                    border: '1px solid #ffcc80',
-                    borderRadius: 4,
-                    color: '#8b5a00',
-                    fontSize: 13,
-                    lineHeight: 1.5,
-                  }}>
-                    <strong>OneDrive interference suspected.</strong> Your app
-                    data folder appears to be inside a OneDrive-synced
-                    location. OneDrive can corrupt SQLite WAL files mid-write,
-                    causing silent save failures. To fix this, exclude
-                    OpenDraft's data folder from OneDrive backup, or move your
-                    Windows AppData folder out of OneDrive sync.
-                  </div>
-                )}
-                <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 12 }}>
-                  <tbody>
-                    <DiagRow label="Version" value={diagnosticsReport.appVersion} />
-                    <DiagRow label="OS" value={diagnosticsReport.os} />
-                    <DiagRow label="Storage backend" value={diagnosticsReport.storageMode} />
-                    {diagnosticsReport.storageError && (
-                      <DiagRow label="Storage error" value={diagnosticsReport.storageError} mono />
-                    )}
-                    {diagnosticsReport.appDataDir && (
-                      <DiagRow label="App data dir" value={diagnosticsReport.appDataDir} mono />
-                    )}
-                    {diagnosticsReport.sqliteDbPath && (
-                      <DiagRow label="SQLite DB path" value={diagnosticsReport.sqliteDbPath} mono />
-                    )}
+                        {entry.errorReason && (
+                          <tr>
+                            <td colSpan={3} style={{ padding: '0 8px 8px 8px' }}>
+                              <pre style={{
+                                margin: 0,
+                                padding: '6px 8px',
+                                fontSize: 11,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                background: '#f4f4f4',
+                                border: '1px solid #ddd',
+                                borderRadius: 4,
+                                color: '#1a1a1a',
+                              }}>{entry.errorReason}</pre>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
                   </tbody>
                 </table>
-              </>
-            ) : (
-              <div style={{ marginTop: 12, color: 'var(--fd-text-secondary)' }}>Loading…</div>
-            )}
-          </div>
-          <div className="dialog-actions">
-            <button
-              className="dialog-secondary"
-              onClick={handleCopyDiagnostics}
-              disabled={!diagnosticsReport}
-            >
-              {diagnosticsCopied ? 'Copied ✓' : 'Copy Report'}
-            </button>
-            <button className="dialog-primary" onClick={() => setDiagnosticsOpen(false)}>Close</button>
+              </div>
+            </div>
+            <div className="dialog-actions">
+              <button className="dialog-primary" onClick={() => setAboutOpen(false)}>Close</button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
-    {discardConfirmOpen && (
-      <div className="dialog-overlay" onClick={handleDiscardConfirmCancel}>
-        <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">Unsaved Changes</div>
-          <div className="dialog-body">
-            <p style={{ margin: 0, fontSize: 14, color: 'var(--fd-text)' }}>
-              You have unsaved changes. Would you like to save before proceeding?
-            </p>
-          </div>
-          <div className="dialog-actions">
-            <button onClick={handleDiscardConfirmCancel}>Cancel</button>
-            <button onClick={handleDiscardConfirmDiscard}>Discard</button>
-            <button className="dialog-primary" onClick={handleDiscardConfirmSave}>Save &amp; Continue</button>
+      )}
+      {diagnosticsOpen && (
+        <div className="dialog-overlay" onClick={() => setDiagnosticsOpen(false)}>
+          <div className="dialog-box about-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">Diagnostics</div>
+            <div className="dialog-body about-body">
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--fd-text-secondary)' }}>
+                Runtime info to attach to bug reports. Click "Copy" to copy the
+                full report to your clipboard, then paste it into the GitHub issue.
+              </p>
+              {diagnosticsReport ? (
+                <>
+                  {diagnosticsReport.oneDriveSuspect && (
+                    <div style={{
+                      marginTop: 12,
+                      padding: '10px 12px',
+                      background: '#fff8e1',
+                      border: '1px solid #ffcc80',
+                      borderRadius: 4,
+                      color: '#8b5a00',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                    }}>
+                      <strong>OneDrive interference suspected.</strong> Your app
+                      data folder appears to be inside a OneDrive-synced
+                      location. OneDrive can corrupt SQLite WAL files mid-write,
+                      causing silent save failures. To fix this, exclude
+                      OpenDraft's data folder from OneDrive backup, or move your
+                      Windows AppData folder out of OneDrive sync.
+                    </div>
+                  )}
+                  <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse', marginTop: 12 }}>
+                    <tbody>
+                      <DiagRow label="Version" value={diagnosticsReport.appVersion} />
+                      <DiagRow label="OS" value={diagnosticsReport.os} />
+                      <DiagRow label="Storage backend" value={diagnosticsReport.storageMode} />
+                      {diagnosticsReport.storageError && (
+                        <DiagRow label="Storage error" value={diagnosticsReport.storageError} mono />
+                      )}
+                      {diagnosticsReport.appDataDir && (
+                        <DiagRow label="App data dir" value={diagnosticsReport.appDataDir} mono />
+                      )}
+                      {diagnosticsReport.sqliteDbPath && (
+                        <DiagRow label="SQLite DB path" value={diagnosticsReport.sqliteDbPath} mono />
+                      )}
+                    </tbody>
+                  </table>
+                </>
+              ) : (
+                <div style={{ marginTop: 12, color: 'var(--fd-text-secondary)' }}>Loading…</div>
+              )}
+            </div>
+            <div className="dialog-actions">
+              <button
+                className="dialog-secondary"
+                onClick={handleCopyDiagnostics}
+                disabled={!diagnosticsReport}
+              >
+                {diagnosticsCopied ? 'Copied ✓' : 'Copy Report'}
+              </button>
+              <button className="dialog-primary" onClick={() => setDiagnosticsOpen(false)}>Close</button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
-    {docxImportWarningOpen && (
-      <div className="dialog-overlay" onClick={() => setDocxImportWarningOpen(false)}>
-        <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
-          <div className="dialog-header">Import from Word — Best-Effort Formatting</div>
-          <div className="dialog-body">
-            <p style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--fd-text)' }}>
-              OpenDraft will detect screenplay element types (scene heading, action,
-              character, dialogue, parenthetical, transition, etc.) from the
-              Word document&apos;s formatting.
-            </p>
-            <p style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--fd-text)' }}>
-              Detection is <strong>best-effort</strong> and depends on consistent
-              formatting being applied throughout the document. Results will be
-              accurate if you used:
-            </p>
-            <ul style={{ margin: '0 0 8px 18px', fontSize: 13, color: 'var(--fd-text)' }}>
-              <li>Final Draft, Fade In, Trelby, or Highland style names, OR</li>
-              <li>Standard Final Draft indents (Action 1.5&quot;, Character 3.5&quot;, Dialogue 2.5&quot;, Parenthetical 3.0&quot;), OR</li>
-              <li>Conventional text patterns (INT./EXT., ALL-CAPS character cues, &quot;CUT TO:&quot; transitions).</li>
-            </ul>
-            <p style={{ margin: 0, fontSize: 13, color: 'var(--fd-text-muted, #888)' }}>
-              Anything that can&apos;t be classified will be imported as Action and
-              listed in a post-import notice for you to review.
-            </p>
-          </div>
-          <div className="dialog-actions">
-            <button onClick={() => setDocxImportWarningOpen(false)}>Cancel</button>
-            <button className="dialog-primary" onClick={handleConfirmDocxImport}>Continue</button>
+      )}
+      {discardConfirmOpen && (
+        <div className="dialog-overlay" onClick={handleDiscardConfirmCancel}>
+          <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">Unsaved Changes</div>
+            <div className="dialog-body">
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--fd-text)' }}>
+                You have unsaved changes. Would you like to save before proceeding?
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button onClick={handleDiscardConfirmCancel}>Cancel</button>
+              <button onClick={handleDiscardConfirmDiscard}>Discard</button>
+              <button className="dialog-primary" onClick={handleDiscardConfirmSave}>Save &amp; Continue</button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
+      {docxImportWarningOpen && (
+        <div className="dialog-overlay" onClick={() => setDocxImportWarningOpen(false)}>
+          <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-header">Import from Word — Best-Effort Formatting</div>
+            <div className="dialog-body">
+              <p style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--fd-text)' }}>
+                OpenDraft will detect screenplay element types (scene heading, action,
+                character, dialogue, parenthetical, transition, etc.) from the
+                Word document&apos;s formatting.
+              </p>
+              <p style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--fd-text)' }}>
+                Detection is <strong>best-effort</strong> and depends on consistent
+                formatting being applied throughout the document. Results will be
+                accurate if you used:
+              </p>
+              <ul style={{ margin: '0 0 8px 18px', fontSize: 13, color: 'var(--fd-text)' }}>
+                <li>Final Draft, Fade In, Trelby, or Highland style names, OR</li>
+                <li>Standard Final Draft indents (Action 1.5&quot;, Character 3.5&quot;, Dialogue 2.5&quot;, Parenthetical 3.0&quot;), OR</li>
+                <li>Conventional text patterns (INT./EXT., ALL-CAPS character cues, &quot;CUT TO:&quot; transitions).</li>
+              </ul>
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--fd-text-muted, #888)' }}>
+                Anything that can&apos;t be classified will be imported as Action and
+                listed in a post-import notice for you to review.
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button onClick={() => setDocxImportWarningOpen(false)}>Cancel</button>
+              <button className="dialog-primary" onClick={handleConfirmDocxImport}>Continue</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

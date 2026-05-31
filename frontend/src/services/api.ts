@@ -204,6 +204,32 @@ export interface DiffResponse {
   to_hash: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at: string;
+  context?: Record<string, unknown> | null;
+}
+
+export interface ChatCheckpointInfo {
+  id: string;
+  created_at: string;
+  message_count: number;
+  label?: string | null;
+  commit_hash?: string | null;
+}
+
+export interface ChatConversation {
+  conversation_id: string;
+  project_id: string;
+  script_id: string;
+  created_at: string;
+  updated_at: string;
+  messages: ChatMessage[];
+  checkpoints: ChatCheckpointInfo[];
+}
+
 export interface CollabSession {
   token: string;
   project_id: string;
@@ -328,6 +354,55 @@ export const api = {
     request<VersionInfo>(`/projects/${projectId}/versions/restore/${hash}`, {
       method: 'POST',
     }),
+
+  // Per-script AI chat history/checkpoints
+  getChatConversation: (projectId: string, scriptId: string) =>
+    request<ChatConversation>(
+      `/projects/${projectId}/scripts/${encodeURIComponent(scriptId)}/chat`
+    ),
+
+  appendChatMessage: (
+    projectId: string,
+    scriptId: string,
+    data: {
+      role: 'user' | 'assistant' | 'system';
+      content: string;
+      context?: Record<string, unknown> | null;
+    }
+  ) =>
+    request<ChatMessage>(
+      `/projects/${projectId}/scripts/${encodeURIComponent(scriptId)}/chat/messages`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
+
+  listChatCheckpoints: (projectId: string, scriptId: string) =>
+    request<ChatCheckpointInfo[]>(
+      `/projects/${projectId}/scripts/${encodeURIComponent(scriptId)}/chat/checkpoints`
+    ),
+
+  createChatCheckpoint: (
+    projectId: string,
+    scriptId: string,
+    data: { label?: string; commit_hash?: string }
+  ) =>
+    request<ChatCheckpointInfo>(
+      `/projects/${projectId}/scripts/${encodeURIComponent(scriptId)}/chat/checkpoints`,
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    ),
+
+  restoreChatCheckpoint: (projectId: string, scriptId: string, checkpointId: string) =>
+    request<ChatConversation>(
+      `/projects/${projectId}/scripts/${encodeURIComponent(scriptId)}/chat/checkpoints/${encodeURIComponent(checkpointId)}/restore`,
+      {
+        method: 'POST',
+      }
+    ),
 
   // Collaboration (routed to collab server, not Python backend)
   createCollabInvite: (projectId: string, scriptId: string, collaboratorName: string, role: string = 'editor', expiresInHours: number = 1, sessionNonce: string = '') =>
@@ -539,9 +614,8 @@ export async function initStorage(): Promise<void> {
       const { createFallbackStorage } = await import('./fallback-storage');
       const fallbackApi = createFallbackStorage();
       Object.assign(api, fallbackApi);
-      const reason = `${sqliteReason}\n\nFile fallback also failed: ${
-        fileErr instanceof Error ? fileErr.message : String(fileErr)
-      }`;
+      const reason = `${sqliteReason}\n\nFile fallback also failed: ${fileErr instanceof Error ? fileErr.message : String(fileErr)
+        }`;
       setCompat('storage', 'Storage', 'fallback',
         'Tauri SQLite (local database)', 'localStorage (browser fallback)',
         reason);

@@ -10,13 +10,21 @@ import type {
 export async function generateScreenplayContent(
   request: GenerateScreenplayContentRequest
 ): Promise<GenerateScreenplayContentResponse> {
-  const response = await fetch(`${API_BASE}/api/ai/generate-screenplay-content`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
+  const endpoint = `${API_BASE}/ai/generate-screenplay-content`;
+  let response: Response;
+
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : 'network error';
+    throw new Error(`Failed to reach AI endpoint (${endpoint}): ${reason}`);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

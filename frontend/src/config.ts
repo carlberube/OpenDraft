@@ -37,6 +37,10 @@ function loadStoredCloudApi(): string {
 function normalizeApiBase(raw: string): string {
   const trimmed = raw.replace(/\/+$/, '');
   if (!trimmed) return '';
+  // Guard against invalid schemes (e.g. ws:// collab URL accidentally pasted
+  // into cloud API settings). Falling back avoids opaque "Failed to fetch"
+  // errors across all API calls.
+  if (!/^https?:\/\//i.test(trimmed)) return '';
   return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 }
 
@@ -54,7 +58,9 @@ function computeApiBase(): string {
   const origin = window.location.origin;
   const validOrigin = origin && origin !== 'null';
   const isDev = window.location.port === '5173';
-  if (isDev) return `http://${window.location.hostname}:8008/api`;
+  // Use IPv4 loopback in dev to avoid localhost IPv6 resolution issues on
+  // some Windows setups where the backend binds IPv4 only.
+  if (isDev) return 'http://127.0.0.1:8008/api';
   if (validOrigin) return `${origin}/api`;
   return 'https://open-draft.com/api';
 }

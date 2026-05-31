@@ -27,6 +27,9 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';
 import { getCollabWsUrl } from '../config';
 import type {
+  ChatCheckpointInfo,
+  ChatConversation,
+  ChatMessage,
   ProjectInfo,
   ProjectProperties,
   ScriptMeta,
@@ -57,6 +60,50 @@ function now(): string {
 
 function shortHash(id: string): string {
   return id.slice(0, 7);
+}
+
+function chatKey(projectId: string, scriptId: string): string {
+  return `opendraft:chat:${projectId}/${scriptId}`;
+}
+
+function readChat(projectId: string, scriptId: string): ChatConversation {
+  const key = chatKey(projectId, scriptId);
+  const ts = now();
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ChatConversation & { __snapshots?: Array<[string, ChatMessage[]]> };
+      return {
+        conversation_id: parsed.conversation_id || uuid(),
+        project_id: projectId,
+        script_id: scriptId,
+        created_at: parsed.created_at || ts,
+        updated_at: parsed.updated_at || parsed.created_at || ts,
+        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+        checkpoints: Array.isArray(parsed.checkpoints) ? parsed.checkpoints : [],
+        ...(Array.isArray(parsed.__snapshots) ? { __snapshots: parsed.__snapshots } : {}),
+      };
+    }
+  } catch {
+    // ignore malformed data and reset
+  }
+
+  return {
+    conversation_id: uuid(),
+    project_id: projectId,
+    script_id: scriptId,
+    created_at: ts,
+    updated_at: ts,
+    messages: [],
+    checkpoints: [],
+  };
+}
+
+function writeChat(conversation: ChatConversation): void {
+  localStorage.setItem(
+    chatKey(conversation.project_id, conversation.script_id),
+    JSON.stringify(conversation),
+  );
 }
 
 const EMPTY_PROPS: ProjectProperties = {
@@ -594,6 +641,90 @@ export async function createLocalStorage() {
         message: commits[0].message,
         date: commits[0].created_at,
       };
+    },
+
+    // ── Per-script chat history/checkpoints ──────────────────────────────
+
+    async getChatConversation(projectId: string, scriptId: string): Promise<ChatConversation> {
+      const conversation = readChat(projectId, scriptId);
+      writeChat(conversation);
+      return conversation;
+    },
+
+    async appendChatMessage(
+      projectId: string,
+      scriptId: string,
+      data: {
+        role: 'user' | 'assistant' | 'system';
+        content: string;
+        context?: Record<string, unknown> | null;
+      },
+    ): Promise<ChatMessage> {
+      if (!data.content || !data.content.trim()) {
+        throw new Error('Message content is required');
+      }
+      const conversation = readChat(projectId, scriptId);
+      const message: ChatMessage = {
+        id: uuid(),
+        role: data.role,
+        content: data.content,
+        created_at: now(),
+        context: data.context ?? null,
+      };
+      conversation.messages.push(message);
+      conversation.updated_at = now();
+      writeChat(conversation);
+      return message;
+    },
+
+    async listChatCheckpoints(projectId: string, scriptId: string): Promise<ChatCheckpointInfo[]> {
+      const conversation = readChat(projectId, scriptId);
+      writeChat(conversation);
+      return conversation.checkpoints;
+    },
+
+    async createChatCheckpoint(
+      projectId: string,
+      scriptId: string,
+      data: { label?: string; commit_hash?: string },
+    ): Promise<ChatCheckpointInfo> {
+      const conversation = readChat(projectId, scriptId);
+      const checkpoint: ChatCheckpointInfo = {
+        id: uuid(),
+        created_at: now(),
+        message_count: conversation.messages.length,
+        label: data.label || null,
+        commit_hash: data.commit_hash || null,
+      };
+
+      const snapshots = new Map<string, ChatMessage[]>(
+        (conversation as any).__snapshots || [],
+      );
+      snapshots.set(checkpoint.id, JSON.parse(JSON.stringify(conversation.messages)));
+      (conversation as any).__snapshots = Array.from(snapshots.entries());
+
+      conversation.checkpoints.push(checkpoint);
+      conversation.updated_at = now();
+      writeChat(conversation);
+      return checkpoint;
+    },
+
+    async restoreChatCheckpoint(
+      projectId: string,
+      scriptId: string,
+      checkpointId: string,
+    ): Promise<ChatConversation> {
+      const conversation = readChat(projectId, scriptId);
+      const snapshots = new Map<string, ChatMessage[]>(
+        (conversation as any).__snapshots || [],
+      );
+      const snapshot = snapshots.get(checkpointId);
+      if (!snapshot) throw new Error(`Checkpoint '${checkpointId}' not found`);
+
+      conversation.messages = JSON.parse(JSON.stringify(snapshot));
+      conversation.updated_at = now();
+      writeChat(conversation);
+      return conversation;
     },
 
     /**

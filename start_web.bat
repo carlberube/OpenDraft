@@ -18,12 +18,17 @@ if errorlevel 1 goto :fail
 call :ensure_frontend_env
 if errorlevel 1 goto :fail
 
+call :load_backend_env
+if errorlevel 1 goto :fail
+
 echo.
 echo Starting OpenDraft backend and frontend...
 echo.
 
 start "OpenDraft Backend" cmd /k "cd /d ""%ROOT%backend"" && ""%VENV_PY%"" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8008"
 start "OpenDraft Frontend" cmd /k "cd /d ""%ROOT%frontend"" && npm run dev -- --host 0.0.0.0 --port 5173"
+
+call :wait_for_backend
 
 timeout /t 2 /nobreak >nul
 start "" http://localhost:5173
@@ -38,6 +43,21 @@ echo.
 popd
 exit /b 0
 
+:wait_for_backend
+for /l %%I in (1,1,20) do (
+    powershell -NoProfile -Command "try { $r = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8008/health -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    if not errorlevel 1 (
+        exit /b 0
+    )
+    timeout /t 1 /nobreak >nul
+)
+
+echo.
+echo Warning: backend did not become reachable at http://127.0.0.1:8008/health.
+echo Keep the backend terminal open and check it for startup errors.
+echo.
+exit /b 0
+
 :find_uv
 where uv >nul 2>nul
 if errorlevel 1 (
@@ -45,6 +65,19 @@ if errorlevel 1 (
     echo Install uv from https://docs.astral.sh/uv/getting-started/installation/
     echo Then open a new terminal and run this launcher again.
     exit /b 1
+)
+exit /b 0
+
+:load_backend_env
+set "BACKEND_ENV=%ROOT%backend\.env"
+if not exist "%BACKEND_ENV%" (
+    echo backend\.env was not found.
+    echo Create backend\.env with AI_PROVIDER_MODEL and API keys to enable real AI generation.
+    exit /b 0
+)
+
+for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%BACKEND_ENV%") do (
+    if not "%%~A"=="" set "%%~A=%%~B"
 )
 exit /b 0
 
@@ -110,7 +143,11 @@ if exist "%VENV_PY%" (
 
 if defined VENV_VERSION (
     set "VENV_MAJOR_MINOR=%VENV_VERSION:~0,4%"
-    if not "%VENV_MAJOR_MINOR%"=="3.10" if not "%VENV_MAJOR_MINOR%"=="3.11" if not "%VENV_MAJOR_MINOR%"=="3.12" (
+    set "NEEDS_RECREATE=1"
+    if "%VENV_MAJOR_MINOR%"=="3.10" set "NEEDS_RECREATE=0"
+    if "%VENV_MAJOR_MINOR%"=="3.11" set "NEEDS_RECREATE=0"
+    if "%VENV_MAJOR_MINOR%"=="3.12" set "NEEDS_RECREATE=0"
+    if "%NEEDS_RECREATE%"=="1" (
         echo Existing virtual environment uses Python %VENV_VERSION%.
         echo Recreating it with a supported interpreter...
         rmdir /s /q "%ROOT%venv"
@@ -123,8 +160,20 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
+set "DEPS_STAMP=%ROOT%venv\.deps_ready"
+if exist "%DEPS_STAMP%" goto :deps_ready
+
+powershell -NoProfile -Command "$p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*OpenDraft*' -and $_.CommandLine -like '*\\venv\\Scripts\\python.exe*' }; if ($p) { exit 0 } else { exit 1 }" >nul 2>nul
+if not errorlevel 1 goto :deps_ready
+
+"%VENV_PY%" -c "import uvicorn, fastapi, pydantic_core" >nul 2>nul
+if not errorlevel 1 goto :deps_ready
+
 echo Installing backend dependencies...
 uv pip install --python "%VENV_PY%" -r "%ROOT%backend\requirements.txt" || exit /b 1
+type nul > "%DEPS_STAMP%"
+
+:deps_ready
 exit /b 0
 
 :ensure_frontend_env

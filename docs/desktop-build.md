@@ -22,7 +22,7 @@ User data is stored in the platform-specific app data directory:
 
 - **Node.js** >= 18
 - **Rust** (install via https://rustup.rs)
-- **Python 3.12** with venv
+- **Python 3.12** with uv
 - **PyInstaller** (installed automatically by the build script)
 
 ### macOS additional requirements:
@@ -70,7 +70,7 @@ cp -r frontend/dist backend/static
 
 ```bash
 cd backend
-../venv/bin/pip install pyinstaller
+uv pip install --python ../venv/bin/python pyinstaller
 ../venv/bin/pyinstaller --noconfirm --clean opendraft-api.spec
 ```
 

@@ -237,9 +237,9 @@ git clone https://github.com/Proteus-Technologies-Private-Limited/OpenDraft.git
 cd OpenDraft
 
 # Backend
-python3.12 -m venv venv
+uv venv --python 3.12 venv
 source venv/bin/activate
-pip install -r backend/requirements.txt
+uv pip install -r backend/requirements.txt
 
 # Frontend
 cd frontend && npm install && cd ..

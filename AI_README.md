@@ -196,7 +196,7 @@ This is expected and allows you to test the full workflow without external API c
 
 ```bash
 cd backend
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 This installs `litellm==1.83.0` (patched version addressing security vulnerabilities).
@@ -393,7 +393,7 @@ Install backend dependencies:
 
 ```bash
 cd backend
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ### Generated content has code fences

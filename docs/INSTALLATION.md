@@ -111,11 +111,11 @@ cd OpenDraft
 #### 2. Set up Python environment
 
 ```bash
-python3.12 -m venv venv
+uv venv --python 3.12 venv
 source venv/bin/activate        # macOS/Linux
 # venv\Scripts\activate         # Windows
 
-pip install -r backend/requirements.txt
+uv pip install -r backend/requirements.txt
 ```
 
 #### 3. Install frontend dependencies
@@ -172,9 +172,9 @@ git clone https://github.com/Proteus-Technologies-Private-Limited/OpenDraft.git
 cd OpenDraft
 
 # Backend setup
-python3.12 -m venv venv
+uv venv --python 3.12 venv
 source venv/bin/activate
-pip install -r backend/requirements.txt
+uv pip install -r backend/requirements.txt
 
 # Frontend setup
 cd frontend && npm install && cd ..

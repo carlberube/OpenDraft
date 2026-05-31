@@ -89,6 +89,7 @@ import ShareDialog from './ShareDialog';
 import CollabLoginDialog from './CollabLoginDialog';
 import JoinCollabDialog from './JoinCollabDialog';
 import CompareVersionPicker from './CompareVersionPicker';
+import AiGenerateDialog from './AiGenerateDialog';
 import ZoomPanel from './ZoomPanel';
 import { useIsTouchDevice, useSwipeEdge, usePinchZoom } from '../hooks/useTouch';
 import { useSettingsStore } from '../stores/settingsStore';
@@ -266,27 +267,38 @@ const ScreenplayEditor: React.FC = () => {
   // ── Panel resize state ──
   const [navWidth, setNavWidth] = useState(240);
   const [rightPanelWidth, setRightPanelWidth] = useState(300);
+  const [aiPanelHeight, setAiPanelHeight] = useState(320);
+  const [aiPanelDock, setAiPanelDock] = useState<'right' | 'bottom'>('right');
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+  const aiCursorPosRef = useRef<number | null>(null);
+  const aiContextRef = useRef<import('../ai/types').ScreenplayContext | undefined>(undefined);
 
   // Sync nav width to store for floating menu positioning
   useEffect(() => {
     useEditorStore.getState().setNavPanelWidth(navigatorOpen ? navWidth : 0);
   }, [navWidth, navigatorOpen]);
-  const resizingRef = useRef<'left' | 'right' | null>(null);
+  const resizingRef = useRef<'left' | 'right' | 'bottom' | null>(null);
   const resizeStartXRef = useRef(0);
-  const resizeStartWidthRef = useRef(0);
+  const resizeStartYRef = useRef(0);
+  const resizeStartSizeRef = useRef(0);
 
-  const handleResizePointerDown = useCallback((side: 'left' | 'right', e: React.PointerEvent) => {
+  const handleResizePointerDown = useCallback((side: 'left' | 'right' | 'bottom', e: React.PointerEvent) => {
     e.preventDefault();
     resizingRef.current = side;
     resizeStartXRef.current = e.clientX;
-    resizeStartWidthRef.current = side === 'left' ? navWidth : rightPanelWidth;
+    resizeStartYRef.current = e.clientY;
+    resizeStartSizeRef.current = side === 'left' ? navWidth : side === 'right' ? rightPanelWidth : aiPanelHeight;
 
     const handlePointerMove = (ev: PointerEvent) => {
-      const delta = ev.clientX - resizeStartXRef.current;
       if (resizingRef.current === 'left') {
-        setNavWidth(Math.max(160, Math.min(500, resizeStartWidthRef.current + delta)));
+        const delta = ev.clientX - resizeStartXRef.current;
+        setNavWidth(Math.max(160, Math.min(500, resizeStartSizeRef.current + delta)));
+      } else if (resizingRef.current === 'right') {
+        const delta = ev.clientX - resizeStartXRef.current;
+        setRightPanelWidth(Math.max(200, Math.min(600, resizeStartSizeRef.current - delta)));
       } else {
-        setRightPanelWidth(Math.max(200, Math.min(600, resizeStartWidthRef.current - delta)));
+        const delta = ev.clientY - resizeStartYRef.current;
+        setAiPanelHeight(Math.max(220, Math.min(520, resizeStartSizeRef.current - delta)));
       }
     };
 
@@ -300,11 +312,11 @@ const ScreenplayEditor: React.FC = () => {
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = side === 'bottom' ? 'row-resize' : 'col-resize';
     document.body.style.userSelect = 'none';
-  }, [navWidth, rightPanelWidth]);
+  }, [aiPanelHeight, navWidth, rightPanelWidth]);
 
-  const rightPanelVisible = scriptNotesOpen || characterProfilesOpen || tagsPanelOpen || locationDatabaseOpen;
+  const rightPanelVisible = scriptNotesOpen || characterProfilesOpen || tagsPanelOpen || locationDatabaseOpen || (aiGenerateOpen && aiPanelDock === 'right');
 
   // Yjs document & provider — stable across renders while collab is active
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -354,7 +366,7 @@ const ScreenplayEditor: React.FC = () => {
   handleSessionEndedRef.current = handleSessionEnded;
 
   // Ref for document-switch handler (defined after setupCollab to avoid circular dependency)
-  const handleDocumentSwitchRef = useRef<(projectId: string, scriptId: string, token: string) => void>(() => {});
+  const handleDocumentSwitchRef = useRef<(projectId: string, scriptId: string, token: string) => void>(() => { });
 
   const setupCollab = useCallback((docName: string, inviteToken: string, _userName: string, isHost = false, overrideWsUrl?: string) => {
     // Skip if already setting up the same document (prevents React StrictMode
@@ -939,8 +951,8 @@ const ScreenplayEditor: React.FC = () => {
 
       // Fire-and-forget server cleanup (don't block signout)
       if (isCollabHost && projectId && scriptId) {
-        api.revokeAllCollabSessions(projectId, scriptId).catch(() => {});
-        if (docName) collabAuthApi.closeDocument(docName).catch(() => {});
+        api.revokeAllCollabSessions(projectId, scriptId).catch(() => { });
+        if (docName) collabAuthApi.closeDocument(docName).catch(() => { });
       }
     });
     return () => { setLogoutCollabTeardown(null); };
@@ -970,7 +982,7 @@ const ScreenplayEditor: React.FC = () => {
     availableTypes?: ElementType[];
   }>({ visible: false, position: { top: 0, left: 0 }, defaultType: 'action' });
 
-  const showPickerRef = useRef<(defaultType: ElementType, availableTypes?: ElementType[]) => void>(() => {});
+  const showPickerRef = useRef<(defaultType: ElementType, availableTypes?: ElementType[]) => void>(() => { });
 
   // Character autocomplete state
   const [knownCharacters, setKnownCharacters] = useState<string[]>([]);
@@ -1380,10 +1392,10 @@ const ScreenplayEditor: React.FC = () => {
       const ie = e as InputEvent;
       if (ie.inputType === 'historyUndo') {
         e.preventDefault();
-        try { editor.chain().undo().run(); } catch {}
+        try { editor.chain().undo().run(); } catch { }
       } else if (ie.inputType === 'historyRedo') {
         e.preventDefault();
-        try { editor.chain().redo().run(); } catch {}
+        try { editor.chain().redo().run(); } catch { }
       }
     };
     document.addEventListener('beforeinput', handleBeforeInput);
@@ -1714,7 +1726,7 @@ const ScreenplayEditor: React.FC = () => {
 
   // --- Initialize spell checker on mount ---
   useEffect(() => {
-    spellChecker.init().catch(() => {});
+    spellChecker.init().catch(() => { });
   }, []);
 
   // --- Toggle spell check plugin when store changes ---
@@ -2090,7 +2102,7 @@ const ScreenplayEditor: React.FC = () => {
               const msg = err instanceof Error ? err.message : String(err);
               const proceed = window.confirm(
                 `Could not save your latest changes:\n\n${msg}\n\n` +
-                  'Close anyway and lose those changes?',
+                'Close anyway and lose those changes?',
               );
               if (proceed) await win.destroy();
             }
@@ -2190,7 +2202,7 @@ const ScreenplayEditor: React.FC = () => {
             const pendingJson = JSON.stringify(pendingContent);
             if (pendingJson !== lastSavedJsonRef.current) {
               lastSavedJsonRef.current = pendingJson;
-              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch {}
+              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch { }
             }
           }
         }
@@ -2583,7 +2595,7 @@ const ScreenplayEditor: React.FC = () => {
             const pendingJson = JSON.stringify(pendingContent);
             if (pendingJson !== lastSavedJsonRef.current) {
               lastSavedJsonRef.current = pendingJson;
-              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch {}
+              try { await scriptApi.saveScript(currentProject.id, currentScriptId, { content: pendingContent }); } catch { }
             }
           }
         }
@@ -2805,7 +2817,7 @@ const ScreenplayEditor: React.FC = () => {
       useEditorStore.getState().setDocumentTitle(scriptTitle);
       const fmtLabel = ext === 'fdx' ? 'Final Draft (.fdx)'
         : ext === 'fountain' ? 'Fountain (.fountain)'
-        : ext ? `.${ext}` : 'imported file';
+          : ext ? `.${ext}` : 'imported file';
       useEditorStore.getState().setImportedSource({ name, format: fmtLabel });
     }
     // 'blank' — editor already has empty content, nothing to do
@@ -2903,8 +2915,8 @@ const ScreenplayEditor: React.FC = () => {
       // Mark as imported so Save As shows the "saved to OpenDraft library" notice.
       const fmtLabel = ext === 'fdx' ? 'Final Draft (.fdx)'
         : ext === 'fountain' ? 'Fountain (.fountain)'
-        : ext === 'odraft' ? 'OpenDraft (.odraft)'
-        : ext ? `.${ext}` : 'imported file';
+          : ext === 'odraft' ? 'OpenDraft (.odraft)'
+            : ext ? `.${ext}` : 'imported file';
       useEditorStore.getState().setImportedSource({ name: filename, format: fmtLabel });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -3091,8 +3103,8 @@ const ScreenplayEditor: React.FC = () => {
       setShowWelcome(false);
       const fmtLabel = ext === 'fdx' ? 'Final Draft (.fdx)'
         : ext === 'fountain' ? 'Fountain (.fountain)'
-        : ext === 'odraft' ? 'OpenDraft (.odraft)'
-        : ext ? `.${ext}` : 'imported file';
+          : ext === 'odraft' ? 'OpenDraft (.odraft)'
+            : ext ? `.${ext}` : 'imported file';
       useEditorStore.getState().setImportedSource({ name: file.name, format: fmtLabel });
     } catch (err) {
       console.error('Failed to import dropped file:', err);
@@ -3366,6 +3378,91 @@ const ScreenplayEditor: React.FC = () => {
     charAutoDismissedRef.current = true;
   }, []);
 
+  // --- AI Chat handlers ---
+  const handleAiChat = useCallback(() => {
+    if (!editor) return;
+
+    // Capture current cursor position
+    const { from } = editor.state.selection;
+    aiCursorPosRef.current = from;
+
+    // Capture context
+    const { state } = editor;
+    const { doc } = state;
+
+    // Try to get selected text
+    const selectedText = state.selection.empty ? undefined : state.doc.textBetween(state.selection.from, state.selection.to, '\n');
+
+    // Try to get current scene text (find nearest sceneHeading and get text until next sceneHeading)
+    let currentSceneText: string | undefined;
+    let nearbyText: string | undefined;
+
+    // Scan backwards to find the nearest sceneHeading
+    let sceneStartPos = 0;
+    doc.descendants((node, pos) => {
+      if (pos >= from) return false; // Stop after cursor
+      if (node.type.name === 'sceneHeading') {
+        sceneStartPos = pos;
+      }
+      return true;
+    });
+
+    // Scan forward from sceneStartPos to find the next sceneHeading or end
+    let sceneEndPos = doc.content.size;
+    let foundNextScene = false;
+    doc.descendants((node, pos) => {
+      if (pos <= sceneStartPos) return true; // Skip until after scene start
+      if (node.type.name === 'sceneHeading' && !foundNextScene) {
+        sceneEndPos = pos;
+        foundNextScene = true;
+        return false; // Stop
+      }
+      return true;
+    });
+
+    // Extract scene text
+    if (sceneStartPos < sceneEndPos) {
+      currentSceneText = doc.textBetween(sceneStartPos, sceneEndPos, '\n\n').trim();
+      // Limit scene text to prevent sending excessive context (max 2000 chars)
+      if (currentSceneText.length > 2000) {
+        currentSceneText = currentSceneText.substring(0, 2000) + '...';
+      }
+    }
+
+    // If no scene found, get nearby text (e.g., 500 chars before and after cursor)
+    if (!currentSceneText) {
+      const nearbyStart = Math.max(0, from - 500);
+      const nearbyEnd = Math.min(doc.content.size, from + 500);
+      nearbyText = doc.textBetween(nearbyStart, nearbyEnd, '\n\n').trim();
+    }
+
+    // Get document title
+    const documentTitle = useEditorStore.getState().documentTitle || undefined;
+
+    aiContextRef.current = {
+      selectedText,
+      currentSceneText,
+      nearbyText,
+      documentTitle,
+    };
+
+    setAiGenerateOpen(true);
+  }, [editor]);
+
+  const handleAiInsert = useCallback((content: string) => {
+    if (!editor || aiCursorPosRef.current === null) return;
+
+    // Insert at the saved cursor position
+    const pos = aiCursorPosRef.current;
+
+    // Parse the generated fountain content and insert it
+    // For simplicity, we'll insert it as plain text and let the user format it
+    // A more sophisticated approach would parse it into proper screenplay elements
+    editor.chain().focus().setTextSelection(pos).insertContent(content).run();
+
+    showToast('AI-generated content inserted', 'success');
+  }, [editor]);
+
   // --- Click on script note highlight → auto-filter notes panel ---
   // Only opens the panel when note highlights are visible (notesVisible).
   // When highlights are off, clicks pass through as normal editing.
@@ -3616,7 +3713,7 @@ const ScreenplayEditor: React.FC = () => {
           <div className="collab-activity-wrapper">
             <button className="collab-banner-btn collab-activity-btn" onClick={() => setCollabActivityOpen((v) => !v)} title="Activity Log">
               <span className="collab-activity-label">Activity</span>
-              <svg className="collab-activity-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <svg className="collab-activity-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
             </button>
             {collabActivityOpen && (
               <div className="collab-activity-dropdown">
@@ -3698,7 +3795,7 @@ const ScreenplayEditor: React.FC = () => {
           return;
         }
         setShareDialogOpen(true);
-      }} onJoinCollab={() => setJoinCollabOpen(true)} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} />}
+      }} onJoinCollab={() => setJoinCollabOpen(true)} isCollabActive={collabMode} isCollabGuest={collabMode && !isCollabHost} onAiChat={handleAiChat} />}
       {!isHistoryMode && <Toolbar editor={editor} />}
       <div className="editor-layout">
         {!isHistoryMode && <SceneNavigator editor={editor} scrollContainer={editorMainRef.current} style={{ width: navWidth, minWidth: navWidth }} />}
@@ -3720,117 +3817,117 @@ const ScreenplayEditor: React.FC = () => {
                   minWidth: `calc(${pageLayout.pageWidth}in * ${zoomScale})`,
                 }}
               >
-              <div
-                className="page-container"
-                style={{
-                  transform: `scale(${zoomScale})`,
-                  transformOrigin: 'top left',
-                  width: `${pageLayout.pageWidth}in`,
-                  minWidth: `${pageLayout.pageWidth}in`,
-                  maxWidth: `${pageLayout.pageWidth}in`,
-                }}
-              >
                 <div
-                  className={`page${!tagsVisible ? ' tags-hidden' : ''}${!notesVisible ? ' notes-hidden' : ''}${isHistoryMode ? ' history-readonly' : ''}${sceneNumbersVisible ? ' show-scene-numbers' : ''}`}
-                  ref={pageRef}
+                  className="page-container"
                   style={{
-                    fontFamily: `'${fontFamily}', 'Courier New', Courier, monospace`,
-                    fontSize: `${fontSize}pt`,
+                    transform: `scale(${zoomScale})`,
+                    transformOrigin: 'top left',
                     width: `${pageLayout.pageWidth}in`,
-                    minHeight: `${lastPageEnd + (pageLayout.bottomMargin / 72) * 96}px`,
-                    paddingTop: `${pageLayout.topMargin}pt`,
-                    paddingBottom: `${pageLayout.bottomMargin}pt`,
-                    paddingLeft: `${pageLayout.leftMargin}in`,
-                    paddingRight: `${pageLayout.rightMargin}in`,
-                    // CSS variables for element padding calculations
-                    ...{ '--pl': `${pageLayout.leftMargin}in` } as React.CSSProperties,
-                    ...{ '--pr': `${pageLayout.rightMargin}in` } as React.CSSProperties,
-                    ...{ '--pw': `${pageLayout.pageWidth}in` } as React.CSSProperties,
+                    minWidth: `${pageLayout.pageWidth}in`,
+                    maxWidth: `${pageLayout.pageWidth}in`,
                   }}
                 >
-                  {/* Page break separators — absolutely positioned, full page width */}
-                  {overlays.map((ov) => {
-                    const hContent = pageLayout.headerContent || DEFAULT_HEADER_CONTENT;
-                    const fContent = pageLayout.footerContent || DEFAULT_FOOTER_CONTENT;
-                    const hStart = pageLayout.headerStartPage ?? 2;
-                    const fStart = pageLayout.footerStartPage ?? 1;
-                    const { documentTitle: docTitle, revisionColor: revColor, pageCount: totalPages } = useEditorStore.getState();
-                    const showHeader = ov.pageNumber >= hStart;
-                    // The footer belongs to the page BEFORE this break (ov.pageNumber - 1)
-                    const footerPage = ov.pageNumber - 1;
-                    const showFooterForPrev = footerPage >= fStart;
-                    return (
-                    <div
-                      key={ov.pageNumber}
-                      className="page-sep"
-                      style={{ top: `${ov.top}px` }}
-                    >
-                      <div className="page-sep-bottom" style={{ height: `${pageLayout.bottomMargin}pt`, position: 'relative' }}>
-                        {ov.isDialogueSplit && (
-                          <div className="page-sep-more">(MORE)</div>
-                        )}
-                        {showFooterForPrev && (fContent.left || fContent.center || fContent.right) && (
-                          <div className="page-sep-footer">
-                            <span className="page-sep-hf-left">{resolveHFFields(fContent.left, footerPage, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-center">{resolveHFFields(fContent.center, footerPage, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-right">{resolveHFFields(fContent.right, footerPage, totalPages, docTitle, revColor)}</span>
+                  <div
+                    className={`page${!tagsVisible ? ' tags-hidden' : ''}${!notesVisible ? ' notes-hidden' : ''}${isHistoryMode ? ' history-readonly' : ''}${sceneNumbersVisible ? ' show-scene-numbers' : ''}`}
+                    ref={pageRef}
+                    style={{
+                      fontFamily: `'${fontFamily}', 'Courier New', Courier, monospace`,
+                      fontSize: `${fontSize}pt`,
+                      width: `${pageLayout.pageWidth}in`,
+                      minHeight: `${lastPageEnd + (pageLayout.bottomMargin / 72) * 96}px`,
+                      paddingTop: `${pageLayout.topMargin}pt`,
+                      paddingBottom: `${pageLayout.bottomMargin}pt`,
+                      paddingLeft: `${pageLayout.leftMargin}in`,
+                      paddingRight: `${pageLayout.rightMargin}in`,
+                      // CSS variables for element padding calculations
+                      ...{ '--pl': `${pageLayout.leftMargin}in` } as React.CSSProperties,
+                      ...{ '--pr': `${pageLayout.rightMargin}in` } as React.CSSProperties,
+                      ...{ '--pw': `${pageLayout.pageWidth}in` } as React.CSSProperties,
+                    }}
+                  >
+                    {/* Page break separators — absolutely positioned, full page width */}
+                    {overlays.map((ov) => {
+                      const hContent = pageLayout.headerContent || DEFAULT_HEADER_CONTENT;
+                      const fContent = pageLayout.footerContent || DEFAULT_FOOTER_CONTENT;
+                      const hStart = pageLayout.headerStartPage ?? 2;
+                      const fStart = pageLayout.footerStartPage ?? 1;
+                      const { documentTitle: docTitle, revisionColor: revColor, pageCount: totalPages } = useEditorStore.getState();
+                      const showHeader = ov.pageNumber >= hStart;
+                      // The footer belongs to the page BEFORE this break (ov.pageNumber - 1)
+                      const footerPage = ov.pageNumber - 1;
+                      const showFooterForPrev = footerPage >= fStart;
+                      return (
+                        <div
+                          key={ov.pageNumber}
+                          className="page-sep"
+                          style={{ top: `${ov.top}px` }}
+                        >
+                          <div className="page-sep-bottom" style={{ height: `${pageLayout.bottomMargin}pt`, position: 'relative' }}>
+                            {ov.isDialogueSplit && (
+                              <div className="page-sep-more">(MORE)</div>
+                            )}
+                            {showFooterForPrev && (fContent.left || fContent.center || fContent.right) && (
+                              <div className="page-sep-footer">
+                                <span className="page-sep-hf-left">{resolveHFFields(fContent.left, footerPage, totalPages, docTitle, revColor)}</span>
+                                <span className="page-sep-hf-center">{resolveHFFields(fContent.center, footerPage, totalPages, docTitle, revColor)}</span>
+                                <span className="page-sep-hf-right">{resolveHFFields(fContent.right, footerPage, totalPages, docTitle, revColor)}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      <div className="page-sep-gap" />
-                      <div className="page-sep-top" style={{ height: `${pageLayout.topMargin}pt` }}>
-                        {showHeader && (
-                          <div className="page-sep-header">
-                            <span className="page-sep-hf-left">{resolveHFFields(hContent.left, ov.pageNumber, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-center">{resolveHFFields(hContent.center, ov.pageNumber, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-right">{resolveHFFields(hContent.right, ov.pageNumber, totalPages, docTitle, revColor)}</span>
+                          <div className="page-sep-gap" />
+                          <div className="page-sep-top" style={{ height: `${pageLayout.topMargin}pt` }}>
+                            {showHeader && (
+                              <div className="page-sep-header">
+                                <span className="page-sep-hf-left">{resolveHFFields(hContent.left, ov.pageNumber, totalPages, docTitle, revColor)}</span>
+                                <span className="page-sep-hf-center">{resolveHFFields(hContent.center, ov.pageNumber, totalPages, docTitle, revColor)}</span>
+                                <span className="page-sep-hf-right">{resolveHFFields(hContent.right, ov.pageNumber, totalPages, docTitle, revColor)}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      {ov.isDialogueSplit && ov.characterName && (
-                        <div className="page-sep-contd">
-                          {ov.characterName} (CONT'D)
+                          {ov.isDialogueSplit && ov.characterName && (
+                            <div className="page-sep-contd">
+                              {ov.characterName} (CONT'D)
+                            </div>
+                          )}
+
                         </div>
-                      )}
+                      );
+                    })}
 
-                    </div>
-                    );
-                  })}
-
-                  {/* Last page footer — no page break follows the last page, so render its footer separately */}
-                  {(() => {
-                    const fContent = pageLayout.footerContent || DEFAULT_FOOTER_CONTENT;
-                    const fStart = pageLayout.footerStartPage ?? 1;
-                    const { documentTitle: docTitle, revisionColor: revColor, pageCount: totalPages } = useEditorStore.getState();
-                    const lastPage = overlays.length > 0
-                      ? overlays[overlays.length - 1].pageNumber
-                      : 1;
-                    const showFooter = lastPage >= fStart && (fContent.left || fContent.center || fContent.right);
-                    if (!showFooter) return null;
-                    return (
-                      <div
-                        className="page-sep"
-                        style={{ top: `${lastPageEnd}px` }}
-                      >
-                        <div className="page-sep-bottom" style={{ height: `${pageLayout.bottomMargin}pt`, position: 'relative' }}>
-                          <div className="page-sep-footer">
-                            <span className="page-sep-hf-left">{resolveHFFields(fContent.left, lastPage, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-center">{resolveHFFields(fContent.center, lastPage, totalPages, docTitle, revColor)}</span>
-                            <span className="page-sep-hf-right">{resolveHFFields(fContent.right, lastPage, totalPages, docTitle, revColor)}</span>
+                    {/* Last page footer — no page break follows the last page, so render its footer separately */}
+                    {(() => {
+                      const fContent = pageLayout.footerContent || DEFAULT_FOOTER_CONTENT;
+                      const fStart = pageLayout.footerStartPage ?? 1;
+                      const { documentTitle: docTitle, revisionColor: revColor, pageCount: totalPages } = useEditorStore.getState();
+                      const lastPage = overlays.length > 0
+                        ? overlays[overlays.length - 1].pageNumber
+                        : 1;
+                      const showFooter = lastPage >= fStart && (fContent.left || fContent.center || fContent.right);
+                      if (!showFooter) return null;
+                      return (
+                        <div
+                          className="page-sep"
+                          style={{ top: `${lastPageEnd}px` }}
+                        >
+                          <div className="page-sep-bottom" style={{ height: `${pageLayout.bottomMargin}pt`, position: 'relative' }}>
+                            <div className="page-sep-footer">
+                              <span className="page-sep-hf-left">{resolveHFFields(fContent.left, lastPage, totalPages, docTitle, revColor)}</span>
+                              <span className="page-sep-hf-center">{resolveHFFields(fContent.center, lastPage, totalPages, docTitle, revColor)}</span>
+                              <span className="page-sep-hf-right">{resolveHFFields(fContent.right, lastPage, totalPages, docTitle, revColor)}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      );
+                    })()}
 
-                  <EditorContent editor={editor} />
+                    <EditorContent editor={editor} />
+                  </div>
                 </div>
-              </div>
               </div>
             </div>
           )}
         </div>
-        {!isHistoryMode && rightPanelVisible && (
+        {!isHistoryMode && (rightPanelVisible || aiGenerateOpen) && (
           <div className="panel-resize-handle" onPointerDown={(e) => handleResizePointerDown('right', e)} style={{ touchAction: 'none' }} />
         )}
         {!isHistoryMode && <ScriptNotes editor={editor} style={{ width: rightPanelWidth, minWidth: rightPanelWidth }} />}
@@ -3840,7 +3937,38 @@ const ScreenplayEditor: React.FC = () => {
         {!isHistoryMode && pluginRegistry.getPanels('right-sidebar').map((p) => (
           <p.component key={p.id} editor={editor} />
         ))}
+        {!isHistoryMode && aiGenerateOpen && aiPanelDock === 'right' && (
+          <AiGenerateDialog
+            onClose={() => setAiGenerateOpen(false)}
+            onInsert={handleAiInsert}
+            context={aiContextRef.current}
+            projectId={currentProject?.id}
+            scriptId={currentScriptId || undefined}
+            dock={aiPanelDock}
+            onDockChange={setAiPanelDock}
+            style={{ width: rightPanelWidth, minWidth: rightPanelWidth }}
+          />
+        )}
       </div>
+      {!isHistoryMode && aiGenerateOpen && aiPanelDock === 'bottom' && (
+        <div className="ai-bottom-dock" style={{ height: aiPanelHeight, minHeight: aiPanelHeight }}>
+          <div
+            className="panel-resize-handle panel-resize-handle-horizontal"
+            onPointerDown={(e) => handleResizePointerDown('bottom', e)}
+            style={{ touchAction: 'none' }}
+          />
+          <AiGenerateDialog
+            onClose={() => setAiGenerateOpen(false)}
+            onInsert={handleAiInsert}
+            context={aiContextRef.current}
+            projectId={currentProject?.id}
+            scriptId={currentScriptId || undefined}
+            dock={aiPanelDock}
+            onDockChange={setAiPanelDock}
+            style={{ width: '100%', minWidth: 0 }}
+          />
+        </div>
+      )}
       {!isHistoryMode && (
         <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
           <StatusBar editorDoc={editor?.getJSON()} />
